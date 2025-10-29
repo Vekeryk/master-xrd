@@ -1,11 +1,15 @@
 """
-HRXRD Rocking Curve Simulation - Correct Refactoring from C++
+HRXRD Rocking Curve Simulation - NUMBA JIT OPTIMIZED VERSION
 ===============================================================
-Автор: Рефакторинг C++ коду Difuz.cpp
-Призначення: Моделювання кривих дифракційного відбивання (КДВ)
-             для монокристалів з приповерхневими дефектами
+Based on: Рефакторинг C++ коду Difuz.cpp
+Optimization: Numba JIT compilation for critical loops
 
-КРИТИЧНІ ВИПРАВЛЕННЯ:
+PERFORMANCE IMPROVEMENTS:
+- JIT-compiled sublayer loop in RozrachKogerTT
+- Benchmarking utilities for performance measurement
+- Expected speedup: 2-5x on RozrachKogerTT
+
+ORIGINAL FEATURES:
 1. Додано поляризацію (Sigma + Pi)
 2. Повні параметри кристалу (Kapa, g, L_ext)
 3. Правильна багатошаровість (цикл по km підшарам)
@@ -16,6 +20,9 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, Optional
 import matplotlib.pyplot as plt
+import time
+from numba import njit
+from functools import wraps
 
 
 @dataclass
@@ -95,6 +102,97 @@ class GeometryParameters:
     """Геометричні параметри дифрактометра"""
     psi: float                  # Кут між нормаллю та вектором розсіяння
     asymmetric: bool = False    # Симетричний/асиметричний рефлекс
+
+
+# =============================================================================
+# BENCHMARKING UTILITIES
+# =============================================================================
+
+def benchmark(func):
+    """Decorator to measure function execution time"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        elapsed = end_time - start_time
+        print(f"⏱️  {func.__name__}: {elapsed:.4f}s")
+        return result
+    return wrapper
+
+
+# =============================================================================
+# NUMBA JIT-COMPILED FUNCTIONS FOR CRITICAL LOOPS
+# =============================================================================
+
+@njit
+def _compute_sublayer_loop_jit(
+    km, DeltaTeta_i, b_as, tb, Lambda, gamma0,
+    eta0_a, xhp_a_n, xhn_a_n, C_n, gammah,
+    DDpd, psi, asymmetric,
+    Esum, Dl, As_in
+):
+    """
+    JIT-compiled innermost loop for sublayer calculations.
+    This is the hottest path in RozrachKogerTT.
+
+    Args:
+        km: number of sublayers
+        DeltaTeta_i: angular deviation at point i
+        ... (many physics parameters)
+        As_in: initial As value
+
+    Returns:
+        As: final amplitude after all sublayers
+    """
+    cmplxi = 1j
+    As = As_in
+
+    for k in range(1, km + 1):
+        # eta_a for sublayer k
+        eta_a = -(eta0_a[k] * cmplxi +
+                 2 * np.pi * b_as * np.sin(2 * tb) * DeltaTeta_i /
+                 (Lambda * gamma0))
+
+        # sigmasp_a, sigmasn_a for sublayer k
+        sigmasp_a = (np.pi * xhp_a_n[k] * C_n /
+                    (Lambda * np.sqrt(gamma0 * gammah)))
+        sigmasn_a = (np.pi * xhn_a_n[k] * C_n /
+                    (Lambda * np.sqrt(gamma0 * gammah)))
+
+        # YYs[k] for each sublayer
+        if not asymmetric:
+            YYs_k = (np.pi / Lambda / gamma0 *
+                    DDpd[k] * b_as *
+                    (np.cos(psi)**2 * np.tan(tb) +
+                     np.sin(psi) * np.cos(psi)) *
+                    2 * np.sin(2 * tb))
+        else:
+            YYs_k = (np.pi / Lambda / gamma0 *
+                    DDpd[k] * b_as *
+                    (np.cos(psi)**2 * np.tan(tb) -
+                     np.sin(psi) * np.cos(psi)) *
+                    2 * np.sin(2 * tb))
+
+        YYs_k = eta_a + YYs_k
+
+        # Square root with complex number handling
+        sqs = np.sqrt((YYs_k / 2)**2 - sigmasp_a * sigmasn_a * Esum[k]**2)
+        if sqs.imag <= 0:
+            sqs = -sqs
+        if eta0_a[k] <= 0:
+            sqs = -sqs
+
+        ssigma = sqs / cmplxi
+        x2s = -(YYs_k / 2 + sqs) / (sigmasn_a * Esum[k])
+        x1s = -(YYs_k / 2 - sqs) / (sigmasn_a * Esum[k])
+        x3s = (x1s - As) / (x2s - As)
+        expcs = np.exp(-2 * ssigma * Dl[k])
+
+        # Sequential update of As
+        As = (x1s - x2s * x3s * expcs) / (1 - x3s * expcs)
+
+    return As
 
 
 class HRXRDSimulator:
@@ -565,59 +663,28 @@ class HRXRDSimulator:
 
                     As = (x1s - x2s * x3s * expcs) / (1 - x3s * expcs)
 
-                    # КРИТИЧНИЙ ЦИКЛ ПО ПІДШАРАМ (лінії 5956-5986 C++)
-                    # ВАЖЛИВО! Використовувати eta_a[k], sigmasp_a, sigmasn_a для КОЖНОГО підшару!
+                    # КРИТИЧНИЙ ЦИКЛ ПО ПІДШАРАМ - NUMBA JIT OPTIMIZED
+                    # Замість Python loop використовуємо JIT-скомпільовану функцію
                     if self.km > 0:
-                        for k in range(1, self.km + 1):
-                            # eta_a для підшару k (лінія 5958 C++)
-                            # КРИТИЧНО! Це НЕ eta (для плівки), а eta_a[k] (для підшару k)!
-                            eta_a = -(self.eta0_a[k] * cmplxi +
-                                      2 * np.pi * self.b_as * np.sin(2 * self.tb) * self.DeltaTeta[i] /
-                                      (self.crystal.Lambda * self.gamma0))
-
-                            # sigmasp_a, sigmasn_a для підшару k (лінії 5959-5960 C++)
-                            # КРИТИЧНО! Використовуємо self.xhp_a[n][k], НЕ xhp[n]!
-                            sigmasp_a = (np.pi * self.xhp_a[n][k] * self.C[n] /
-                                         (self.crystal.Lambda * np.sqrt(self.gamma0 * self.gammah)))
-                            sigmasn_a = (np.pi * self.xhn_a[n][k] * self.C[n] /
-                                         (self.crystal.Lambda * np.sqrt(self.gamma0 * self.gammah)))
-
-                            # YYs[k] для кожного підшару (лінії 5963-5971 C++)
-                            if not self.geometry.asymmetric:
-                                YYs_k = (np.pi / self.crystal.Lambda / self.gamma0 *
-                                         DDpd[k] * self.b_as *
-                                         (np.cos(self.geometry.psi)**2 * np.tan(self.tb) +
-                                          np.sin(self.geometry.psi) * np.cos(self.geometry.psi)) *
-                                         2 * np.sin(2 * self.tb))
-                            else:
-                                YYs_k = (np.pi / self.crystal.Lambda / self.gamma0 *
-                                         DDpd[k] * self.b_as *
-                                         (np.cos(self.geometry.psi)**2 * np.tan(self.tb) -
-                                          np.sin(self.geometry.psi) * np.cos(self.geometry.psi)) *
-                                         2 * np.sin(2 * self.tb))
-
-                            # КРИТИЧНО! Використовувати eta_a, НЕ eta! (лінія 5971 C++)
-                            YYs_k = eta_a + YYs_k
-
-                            # КРИТИЧНО! Використовувати sigmasp_a, sigmasn_a! (лінія 5972 C++)
-                            sqs = np.sqrt(
-                                (YYs_k / 2)**2 - sigmasp_a * sigmasn_a * self.Esum[k]**2)
-                            if sqs.imag <= 0:
-                                sqs = -sqs
-                            if self.eta0_a[k] <= 0:  # КРИТИЧНО! Це eta0_a[k], НЕ eta0!
-                                sqs = -sqs
-
-                            ssigma = sqs / cmplxi
-                            # КРИТИЧНО! Використовувати sigmasn_a! (лінії 5976, 5978 C++)
-                            x2s = -(YYs_k / 2 + sqs) / \
-                                (sigmasn_a * self.Esum[k])
-                            x1s = -(YYs_k / 2 - sqs) / \
-                                (sigmasn_a * self.Esum[k])
-                            x3s = (x1s - As) / (x2s - As)
-                            expcs = np.exp(-2 * ssigma * self.Dl[k])
-
-                            # Послідовне оновлення As (лінія 5981 C++)
-                            As = (x1s - x2s * x3s * expcs) / (1 - x3s * expcs)
+                        As = _compute_sublayer_loop_jit(
+                            self.km,
+                            self.DeltaTeta[i],
+                            self.b_as,
+                            self.tb,
+                            self.crystal.Lambda,
+                            self.gamma0,
+                            self.eta0_a,
+                            self.xhp_a[n],  # [k] indexing happens in JIT function
+                            self.xhn_a[n],
+                            self.C[n],
+                            self.gammah,
+                            DDpd,
+                            self.geometry.psi,
+                            self.geometry.asymmetric,
+                            self.Esum,
+                            self.Dl,
+                            As  # As_in
+                        )
 
                 # Інтенсивність для даної поляризації (лінія 5990 C++)
                 R[n] = np.abs(xhp0[n] / xhn0[n]) * np.abs(As)**2
@@ -777,12 +844,18 @@ def create_YIG_film(hpl: float = 3.15e-4) -> FilmParameters:
 
 
 def compute_curve_and_profile(array=None,
-                              dl: float = 100e-8,
                               m1: int = 700,
                               m10: int = 20,
                               ik: float = 4.671897861,
                               start_ML: int = 50,
-                              params_obj: DeformationProfile = None):
+                              params_obj: DeformationProfile = None,
+                              verbose=False):
+    """
+    Compute XRD curve and deformation profile.
+
+    Args:
+        verbose: If True, print timing information for each step
+    """
     if array is None and params_obj is None:
         # throw error
         raise ValueError("Input array and params_obj are None")
@@ -808,16 +881,25 @@ def compute_curve_and_profile(array=None,
             L2=array[5],
             Rp2=array[6],
             Dmin=0.0001,
-            dl=dl
+            dl=100e-8
         )
 
     # Фізичні точки кривої
+    if verbose:
+        print("🚀 Starting XRD simulation...")
+        start_time = time.time()
+
     DeltaTeta, R_coger, R_convolved = simulator.RunSimulation(
         deformation,
         m1=m1,
         m10=m10,
         ik=ik
     )
+
+    if verbose:
+        elapsed = time.time() - start_time
+        print(f"✅ Total simulation time: {elapsed:.4f}s")
+        print(f"   Sublayers: {simulator.km}")
 
     # ML точки кривої
     m1_ML = m1 - start_ML
@@ -850,20 +932,88 @@ def compute_curve_and_profile(array=None,
 
 
 # =============================================================================
-# КОД ЩОБ ЗАПУСТИТИ ЦЕЙ ФАЙЛ НАПРЯМУ - КОД ЩОБ ЗАПУСТИТИ ЦЕЙ ФАЙЛ НАПРЯМУ
+# BENCHMARKING UTILITIES
 # =============================================================================
 
-if __name__ == "__main__":
-    # Створення системи GGG + YIG
-    crystal = create_GGG_crystal()
-    film = create_YIG_film()
-    geometry = GeometryParameters(psi=0.0, asymmetric=False)
+def benchmark_comparison(n_samples=10, dl=400e-8):
+    """
+    Compare performance of xrd_parallel vs original xrd.
 
-    # Створення симулятора
-    simulator = HRXRDSimulator(crystal, film, geometry)
+    Args:
+        n_samples: Number of test samples to run
+        dl: Sublayer thickness parameter
 
-    # Параметри деформації (приклад з вашого коду)
-    deformation = DeformationProfile(
+    Returns:
+        dict with timing results
+    """
+    print("=" * 70)
+    print(f"🔬 BENCHMARKING: xrd_parallel.py (Numba JIT optimized)")
+    print(f"   Testing with {n_samples} samples, dl={dl*1e8:.0f}Å")
+    print("=" * 70)
+
+    # Generate random test parameters
+    np.random.seed(42)
+    test_params = []
+    for _ in range(n_samples):
+        params = DeformationProfile(
+            Dmax1=np.random.uniform(0.01, 0.025),
+            D01=np.random.uniform(0.002, 0.015),
+            L1=np.random.uniform(2000e-8, 6000e-8),
+            Rp1=np.random.uniform(1000e-8, 4000e-8),
+            D02=np.random.uniform(0.003, 0.015),
+            L2=np.random.uniform(2000e-8, 5000e-8),
+            Rp2=np.random.uniform(-5000e-8, -500e-8),
+            Dmin=0.0001,
+            dl=dl
+        )
+        test_params.append(params)
+
+    # Warmup run (for JIT compilation)
+    print("\n🔥 Warmup run (JIT compilation)...")
+    _ = compute_curve_and_profile(params_obj=test_params[0], verbose=False)
+    print("   JIT compilation complete!")
+
+    # Timed runs
+    print(f"\n⏱️  Running {n_samples} samples...")
+    start_time = time.time()
+
+    for i, params in enumerate(test_params):
+        compute_curve_and_profile(params_obj=params, verbose=False)
+        if (i + 1) % 5 == 0 or (i + 1) == n_samples:
+            elapsed = time.time() - start_time
+            rate = (i + 1) / elapsed
+            print(f"   Progress: {i+1}/{n_samples} samples, {rate:.2f} samples/sec")
+
+    total_time = time.time() - start_time
+    avg_time = total_time / n_samples
+
+    print("\n" + "=" * 70)
+    print(f"📊 RESULTS:")
+    print(f"   Total time: {total_time:.2f}s")
+    print(f"   Average per sample: {avg_time:.4f}s")
+    print(f"   Throughput: {n_samples/total_time:.2f} samples/sec")
+    print("=" * 70)
+
+    return {
+        'n_samples': n_samples,
+        'total_time': total_time,
+        'avg_time': avg_time,
+        'throughput': n_samples / total_time
+    }
+
+
+def benchmark_single_sample(dl=400e-8):
+    """
+    Detailed benchmark of a single sample with step-by-step timing.
+
+    Args:
+        dl: Sublayer thickness parameter
+    """
+    print("\n" + "=" * 70)
+    print("🔬 DETAILED SINGLE SAMPLE BENCHMARK")
+    print("=" * 70)
+
+    params = DeformationProfile(
         Dmax1=0.01305,
         D01=0.0017,
         L1=5800e-8,
@@ -872,52 +1022,141 @@ if __name__ == "__main__":
         L2=4000e-8,
         Rp2=-500e-8,
         Dmin=0.0001,
-        dl=40e-8
+        dl=dl
     )
 
-    # Симуляція
-    print("Розпочато симуляцію HRXRD...")
-    DeltaTeta, R_coger, R_convolved = simulator.RunSimulation(
-        deformation,
-        m1=700,
-        m10=20,
-        ik=4.671897861
-    )
+    crystal = create_GGG_crystal()
+    film = create_YIG_film()
+    geometry = GeometryParameters(psi=0.0, asymmetric=False)
+    simulator = HRXRDSimulator(crystal, film, geometry)
 
-    print(f"Завершено! Точок: {len(DeltaTeta)}")
-    print(f"Підшарів деформації: {simulator.km}")
-    print(f"Товщина недеформованої плівки: {simulator.hpl0*1e4:.2f} μm")
+    # Step-by-step timing
+    print("\n⏱️  Step-by-step timing:")
 
-    # Візуалізація
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    t0 = time.time()
+    simulator.Start()
+    t1 = time.time()
+    print(f"   1. Start (initialization): {(t1-t0)*1000:.2f}ms")
 
-    # Профіль деформації
-    L = simulator.km * deformation.dl
-    z_profile = np.array([(L - deformation.dl * k + deformation.dl / 2) / 1e-8
-                          for k in range(1, simulator.km + 1)])
+    simulator.Profil(params)
+    t2 = time.time()
+    print(f"   2. Profil (deformation profile): {(t2-t1)*1000:.2f}ms")
+    print(f"      → km={simulator.km} sublayers")
 
-    ax1.plot(z_profile, simulator.DD[1:], 'r-', label='Total DD', linewidth=2)
-    ax1.plot(z_profile, simulator.DDPL1[1:], 'b--', label='Asym Gaussian')
-    ax1.plot(z_profile, simulator.DDPL2[1:], 'g:', label='Decay Gaussian')
-    ax1.set_xlabel('Depth z (Å)')
-    ax1.set_ylabel('Deformation')
-    ax1.set_title('Deformation Profile')
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    simulator.PolarizationInit()
+    t3 = time.time()
+    print(f"   3. PolarizationInit: {(t3-t2)*1000:.2f}ms")
 
-    # Крива дифракційного відбивання
-    ax2.plot(DeltaTeta, R_coger, 'darkgreen',
-             label='Coherent (Takagi-Taupin)', alpha=0.7)
-    ax2.plot(DeltaTeta, R_convolved, 'blue', label='Convolved', linewidth=2)
-    ax2.set_xlabel('Δθ (arcsec)')
-    ax2.set_ylabel('Intensity (a.u.)')
-    ax2.set_title('HRXRD Rocking Curve')
-    ax2.set_yscale('log')
-    ax2.set_xlim(-300, 2100)
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    simulator.RozrachKogerTT(700, 20, 4.671897861)
+    t4 = time.time()
+    print(f"   4. RozrachKogerTT (🔥 HOT PATH): {(t4-t3)*1000:.2f}ms")
 
-    plt.tight_layout()
-    plt.savefig('hrxrd_correct_simulation.png', dpi=150)
-    print("Графік збережено: hrxrd_correct_simulation.png")
-    plt.show()
+    simulator.Zgortka(700, 20, 4.671897861)
+    t5 = time.time()
+    print(f"   5. Zgortka (convolution): {(t5-t4)*1000:.2f}ms")
+
+    total = t5 - t0
+    print(f"\n   TOTAL: {total*1000:.2f}ms ({total:.4f}s)")
+    print(f"   RozrachKogerTT is {(t4-t3)/total*100:.1f}% of total time")
+    print("=" * 70)
+
+
+# =============================================================================
+# КОД ЩОБ ЗАПУСТИТИ ЦЕЙ ФАЙЛ НАПРЯМУ - КОД ЩОБ ЗАПУСТИТИ ЦЕЙ ФАЙЛ НАПРЯМУ
+# =============================================================================
+
+if __name__ == "__main__":
+    import sys
+
+    # Check command line arguments
+    if len(sys.argv) > 1 and sys.argv[1] == "benchmark":
+        # BENCHMARK MODE
+        print("\n🔥 NUMBA JIT BENCHMARK MODE\n")
+
+        # Single sample detailed benchmark
+        benchmark_single_sample(dl=400e-8)
+
+        # Multi-sample benchmark
+        n_samples = 20 if len(sys.argv) < 3 else int(sys.argv[2])
+        benchmark_comparison(n_samples=n_samples, dl=400e-8)
+
+        print("\n💡 TIP: Compare with original xrd.py by running similar benchmark there")
+        print("Expected speedup: 2-5x on RozrachKogerTT with Numba JIT\n")
+
+    else:
+        # DEMO MODE (original visualization)
+        print("=" * 70)
+        print("DEMO MODE: Running single simulation with visualization")
+        print("Run 'python xrd_parallel.py benchmark' for performance testing")
+        print("=" * 70)
+
+        # Створення системи GGG + YIG
+        crystal = create_GGG_crystal()
+        film = create_YIG_film()
+        geometry = GeometryParameters(psi=0.0, asymmetric=False)
+
+        # Створення симулятора
+        simulator = HRXRDSimulator(crystal, film, geometry)
+
+        # Параметри деформації (приклад з вашого коду)
+        deformation = DeformationProfile(
+            Dmax1=0.01305,
+            D01=0.0017,
+            L1=5800e-8,
+            Rp1=3500e-8,
+            D02=0.004845,
+            L2=4000e-8,
+            Rp2=-500e-8,
+            Dmin=0.0001,
+            dl=40e-8
+        )
+
+        # Симуляція
+        print("\n🚀 Starting HRXRD simulation...")
+        start = time.time()
+        DeltaTeta, R_coger, R_convolved = simulator.RunSimulation(
+            deformation,
+            m1=700,
+            m10=20,
+            ik=4.671897861
+        )
+        elapsed = time.time() - start
+
+        print(f"✅ Completed in {elapsed:.4f}s")
+        print(f"   Points: {len(DeltaTeta)}")
+        print(f"   Sublayers: {simulator.km}")
+        print(f"   Film thickness: {simulator.hpl0*1e4:.2f} μm")
+
+        # Візуалізація
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        # Профіль деформації
+        L = simulator.km * deformation.dl
+        z_profile = np.array([(L - deformation.dl * k + deformation.dl / 2) / 1e-8
+                              for k in range(1, simulator.km + 1)])
+
+        ax1.plot(z_profile, simulator.DD[1:], 'r-', label='Total DD', linewidth=2)
+        ax1.plot(z_profile, simulator.DDPL1[1:], 'b--', label='Asym Gaussian')
+        ax1.plot(z_profile, simulator.DDPL2[1:], 'g:', label='Decay Gaussian')
+        ax1.set_xlabel('Depth z (Å)')
+        ax1.set_ylabel('Deformation')
+        ax1.set_title('Deformation Profile (NUMBA JIT)')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # Крива дифракційного відбивання
+        ax2.plot(DeltaTeta, R_coger, 'darkgreen',
+                 label='Coherent (Takagi-Taupin)', alpha=0.7)
+        ax2.plot(DeltaTeta, R_convolved, 'blue', label='Convolved', linewidth=2)
+        ax2.set_xlabel('Δθ (arcsec)')
+        ax2.set_ylabel('Intensity (a.u.)')
+        ax2.set_title('HRXRD Rocking Curve (NUMBA JIT)')
+        ax2.set_yscale('log')
+        ax2.set_xlim(-300, 2100)
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig('hrxrd_numba_simulation.png', dpi=150)
+        print("\n📊 Plot saved: hrxrd_numba_simulation.png")
+        plt.show()

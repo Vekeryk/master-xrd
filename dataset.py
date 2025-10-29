@@ -3,84 +3,141 @@ import torch
 import xrd
 from helpers import get_device
 from importlib import reload
+import pickle
+import os
+from datetime import datetime
+from tqdm import tqdm
 reload(xrd)
 
 
-# Функція для генерації датасету
-def generate_train_dataset(n_samples):
+def arange_inclusive(start, stop, step):
+    """Helper function to create inclusive ranges (from perebir.py)"""
+    return np.arange(start, stop + 0.5 * step, step, dtype=float)
+
+
+# Функція для генерації датасету з розумним перебором (smart grid logic from perebir.py)
+def generate_train_dataset(n_samples, dl=100e-8):
+    """
+    Generate dataset using smart grid-based sampling that respects physical constraints:
+    - D01 <= Dmax1
+    - D01 + D02 <= 0.03
+    - Rp1 <= L1
+    - L2 <= L1
+    """
+    # Define parameter grids (from perebir.py - optimal grid)
+    Dmax1_grid = arange_inclusive(0.0025, 0.0250, 0.0025)
+    D01_grid = arange_inclusive(0.0025, 0.0250, 0.0025)
+    L1_grid = arange_inclusive(500., 7000., 500.)
+    Rp1_grid = arange_inclusive(490., 4990., 500.)
+    D02_grid = arange_inclusive(0.0025, 0.0250, 0.0025)
+    L2_grid = arange_inclusive(500., 5000., 1000.)
+    Rp2_grid = arange_inclusive(-6010., -10., 1000.)
+
+    limit = 0.03  # constraint for D01 + D02
+
     X = []
     Y = []
-    i = 0
-    while i < n_samples:
-        rng = np.random.default_rng()
-        # Use normal distribution for _Dmax1 and _D01
-        # _Dmax1 = float(rng.normal(loc=0.016, scale=0.005))
-        # _Dmax1 = np.clip(_Dmax1, 0.002, 0.030)
 
-        # _D01 = float(rng.normal(loc=0.004, scale=0.002))
-        # _D01 = np.clip(_D01, 0.002, _Dmax1)
+    # Create all valid combinations using smart iteration logic
+    valid_combinations = []
+    for d1 in Dmax1_grid:
+        for d01 in D01_grid:
+            if d01 > d1:
+                break
+            for d02 in D02_grid:
+                if d01 + d02 > limit:
+                    break
+                for l1 in L1_grid:
+                    for r1 in Rp1_grid:
+                        if r1 > l1:
+                            break
+                        for l2 in L2_grid:
+                            if l2 > l1:
+                                break
+                            for r2 in Rp2_grid:
+                                valid_combinations.append(
+                                    (d1, d01, l1, r1, d02, l2, r2))
 
-        _Dmax1 = float(rng.uniform(0.002, 0.030))
+    total_valid = len(valid_combinations)
+    print(f"Total valid combinations: {total_valid:,}")
 
-        # (_D01 + _D02) < 0.030
-        _D01 = float(rng.uniform(0.002, _Dmax1))
+    # Randomly sample n_samples from valid combinations
+    if n_samples > total_valid:
+        print(
+            f"Warning: Requested {n_samples} samples, but only {total_valid} valid combinations exist.")
+        print(f"Generating all {total_valid} samples.")
+        indices = range(total_valid)
+    else:
+        indices = np.random.choice(total_valid, size=n_samples, replace=False)
 
-        if _Dmax1 - _D01 < 0.002:
-            print("Invalid D01 value:", _D01, _Dmax1 - _D01, i)
-            continue
+    for idx in tqdm(indices, desc="Generating samples", unit="sample"):
+        _Dmax1, _D01, _L1, _Rp1, _D02, _L2, _Rp2 = valid_combinations[idx]
 
-        _D02 = float(rng.uniform(0.002, _Dmax1 - _D01))
-
-        # Structural parameters - discrete with 10 Å step
-        # _Rp1 <= 0.75 * _L1
-        # _L2
-
-        _L1 = np.random.choice(np.arange(1000, 7001, 10))
-        _Rp1 = np.random.choice(np.arange(20, int(0.75 * _L1), 10))
-
-        if int(0.75 * _L1) < 500:
-            print("Invalid L1 value:", _L1, int(0.75 * _L1))
-            continue
-
-        _L2 = np.random.choice(np.arange(500, int(0.75 * _L1), 10))
-        _Rp2 = np.random.choice(np.arange(-6000, -20, 10))
-
-        _L1 *= 1e-8
-        _Rp1 *= 1e-8
-        _L2 *= 1e-8
-        _Rp2 *= 1e-8
-
-        # Dmax1 = 0.01305
-        # D01 = 0.0017
-        # L1 = 5800e-8
-        # Rp1 = 3500e-8
-        # D02 = 0.004845
-        # L2 = 4000e-8
-        # Rp2 = -500e-8
-        # L1, Rp1, L2, Rp2
+        # Convert L1, Rp1, L2, Rp2 from Angstroms to cm
+        _L1_cm = _L1 * 1e-8
+        _Rp1_cm = _Rp1 * 1e-8
+        _L2_cm = _L2 * 1e-8
+        _Rp2_cm = _Rp2 * 1e-8
 
         params_obj = xrd.DeformationProfile(
             Dmax1=_Dmax1,
             D01=_D01,
-            L1=_L1,
-            Rp1=_Rp1,
+            L1=_L1_cm,
+            Rp1=_Rp1_cm,
             D02=_D02,
-            L2=_L2,
-            Rp2=_Rp2,
+            L2=_L2_cm,
+            Rp2=_Rp2_cm,
             Dmin=0.0001,
-            dl=100e-8
+            dl=dl
         )
 
         curve, profile = xrd.compute_curve_and_profile(params_obj=params_obj)
 
-        X.append([_Dmax1, _D01, _L1, _Rp1, _D02, _L2, _Rp2])
-        Y.append(curve.ML_Y)  # Keep as raw data until final conversion
-
-        i += 1
+        X.append([_Dmax1, _D01, _L1_cm, _Rp1_cm, _D02, _L2_cm, _Rp2_cm])
+        Y.append(curve.ML_Y)
 
     device = get_device()
-    # Convert both X and Y to tensors consistently at the end
     X = torch.tensor(X, dtype=torch.float32, device=device)
     Y = torch.tensor(Y, dtype=torch.float32, device=device)
 
     return X, Y
+
+
+if __name__ == "__main__":
+    # Hardcoded parameters
+    n_samples = 100_000
+    dl = 400e-8  # in cm (400 Angstroms)
+
+    # Convert dl to Angstroms for filename
+    dl_angstrom = int(dl * 1e8)
+    output_file = f"datasets/dataset_{n_samples}_dl{dl_angstrom}.pkl"
+
+    print(f"Generating {n_samples} samples...")
+    print(f"Output file: {output_file}")
+    print("-" * 60)
+
+    # Generate dataset
+    X, Y = generate_train_dataset(n_samples, dl=dl)
+
+    print("-" * 60)
+    print(f"Dataset generated successfully!")
+    print(f"X shape: {X.shape}")
+    print(f"Y shape: {Y.shape}")
+    print(f"Device: {X.device}")
+
+    # Prepare data for saving
+    dataset = {
+        'X': X.cpu().numpy(),  # Convert to numpy for pickle
+        'Y': Y.cpu().numpy(),
+        'n_samples': n_samples,
+        'timestamp': datetime.now().isoformat(),
+        'device': str(X.device)
+    }
+
+    # Save to pickle file
+    print(f"\nSaving dataset to {output_file}...")
+    with open(output_file, 'wb') as f:
+        pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print(f"Dataset saved successfully!")
+    print(f"File size: {os.path.getsize(output_file) / (1024*1024):.2f} MB")

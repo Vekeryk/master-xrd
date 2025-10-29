@@ -151,29 +151,38 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples):
 # =============================================================================
 
 if __name__ == "__main__":
-    # Hardcoded configuration values
+    # =============================================================================
+    # CONFIGURATION
+    # =============================================================================
+    #
+    # Evaluate Ziegler-inspired model (v3) with:
+    # - K=15 kernel size (from Ziegler et al.)
+    # - Progressive channel expansion: 32→48→64→96→128→128
+    # - Attention pooling (preserves spatial info)
+    # - 6 residual blocks with dilations up to 32
+    # - Physics-constrained loss
+    #
+    # v2 Results (100k samples):
+    # - Rp2: 12.36%, L2: 5.86%, Val loss: 0.01301
+    #
+    # Expected v3 Results:
+    # - Rp2: 7-9%, L2: 3.5-4.5%
+    # =============================================================================
 
-    # ===========================
-
-    # 100,000 samples, dl=400
-    DATA_PATH = "datasets/dataset_100000_dl400.pkl"
-
-    # 10,000 samples, dl=400
-    # DATA_PATH = "datasets/dataset_10000_dl400.pkl"
-
-    # 1,000 samples, dl=400
-    # DATA_PATH = "datasets/dataset_1000_dl400.pkl"
-
-    # ===========================
+    # Dataset selection (must match training dataset)
+    DATA_PATH = "datasets/dataset_100000_dl400.pkl"  # Full evaluation (compare with v2)
+    # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
+    # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
 
     DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
-    MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"
 
-    # DATA_PATH = "datasets/dataset_100000_dl400.pkl"
-    # MODEL_PATH = "checkpoints/dataset_100000_dl400.pt"
+    # Model path - use v3 for Ziegler-inspired model
+    MODEL_PATH = f"checkpoints/{DATASET_NAME}_v3.pt"
+    # MODEL_PATH = f"checkpoints/{DATASET_NAME}_v2.pt"  # v2 physics-informed (for comparison)
+    # MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"  # Old baseline model (for comparison)
 
     BATCH_SIZE = 256
-    USE_LOG_SPACE = True  # Must match training
+    USE_LOG_SPACE = True  # Must match training setting
 
     SHOW_EXAMPLES = 10  # Number of random examples to display (0 to disable)
 

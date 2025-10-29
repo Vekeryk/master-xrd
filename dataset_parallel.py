@@ -165,8 +165,8 @@ def generate_train_dataset(n_samples, dl=100e-8, n_workers=None):
 
 if __name__ == "__main__":
     # Hardcoded parameters
-    n_samples = 1_000_000
-    dl = 400e-8  # in cm (400 Angstroms)
+    n_samples = 100_000
+    dl = 100e-8  # in cm (400 Angstroms)
     n_workers = None  # Auto-detect (cpu_count - 1)
 
     jit = True  # Enable JIT compilation

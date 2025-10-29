@@ -23,7 +23,8 @@ from model_common import (
     load_dataset,
     set_seed,
     get_device,
-    PARAM_NAMES
+    PARAM_NAMES,
+    physics_constrained_loss
 )
 
 
@@ -70,20 +71,28 @@ def train(
 
     # Weighted loss for parameter importance
     # Order: Dmax1, D01, L1, Rp1, D02, L2, Rp2
-    # Higher weights for parameters with poor performance (L2: 22.72%, Rp2: 39.25%)
+    # Higher weights for parameters with poor performance (L2, Rp2)
+    # Balanced weights after architectural improvements
     loss_weights = torch.tensor(
-        [1.0, 1.5, 1.0, 1.0, 2.0, 2.5, 3.5],
+        [1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5],
         device=device
     )
 
     # Train/val split
     idx = torch.randperm(n)
     n_val = int(val_split * n)
-    n_val = max(1, min(n_val, n - 1, max_val_samples))
+
+    # Optional: cap validation set size (set max_val_samples=None for percentage-based split)
+    if max_val_samples is not None:
+        n_val = min(n_val, max_val_samples)
+
+    # Ensure at least 1 sample for validation and at least 1 for training
+    n_val = max(1, min(n_val, n - 1))
+
     tr_idx, va_idx = idx[n_val:], idx[:n_val]
     print(f"\n📊 Data split:")
-    print(f"   Train: {len(tr_idx)} samples")
-    print(f"   Val:   {len(va_idx)} samples")
+    print(f"   Train: {len(tr_idx)} samples ({100 * len(tr_idx) / n:.1f}%)")
+    print(f"   Val:   {len(va_idx)} samples ({100 * len(va_idx) / n:.1f}%)")
 
     # Create datasets
     ds_tr = PickleXRDDataset(X[tr_idx], Y[tr_idx],
@@ -102,9 +111,10 @@ def train(
     print(f"\n🧠 Model: XRDRegressor")
     print(f"   Parameters to predict: {PARAM_NAMES}")
     print(f"   Output dim: {len(PARAM_NAMES)}")
-    print(f"\n⚖️  Weighted Loss Configuration:")
+    print(f"\n⚖️  Physics-Informed Loss Configuration:")
     print(f"   Weights: {loss_weights.cpu().numpy()}")
-    print(f"   (Higher weights for L2 and Rp2 to improve their accuracy)")
+    print(f"   Higher weights for L2 and Rp2 (position/thickness params)")
+    print(f"   Physics constraints: D01≤Dmax1, D01+D02≤0.03, Rp1≤L1, L2≤L1")
 
     # Optimizer and scheduler
     opt = torch.optim.AdamW(
@@ -129,6 +139,7 @@ def train(
         # === TRAINING ===
         model.train()
         train_loss_sum = 0.0
+        train_constraint_sum = 0.0
 
         for y, t in dl_tr:
             y, t = y.to(device), t.to(device)
@@ -136,9 +147,10 @@ def train(
             # Forward pass
             p = model(y)
 
-            # Compute weighted loss (higher weight for L2 and Rp2)
-            per_param_loss = F.smooth_l1_loss(p, t, reduction='none')
-            loss = (loss_weights * per_param_loss).mean()
+            # Compute physics-constrained loss
+            loss, constraint_penalty = physics_constrained_loss(
+                p, t, loss_weights, base_loss_fn=F.smooth_l1_loss
+            )
 
             # Backward pass
             opt.zero_grad()
@@ -146,32 +158,45 @@ def train(
             opt.step()
 
             train_loss_sum += loss.item() * y.size(0)
+            train_constraint_sum += constraint_penalty.item() * y.size(0)
 
         train_loss = train_loss_sum / len(ds_tr)
+        train_constraint = train_constraint_sum / len(ds_tr)
 
         # === VALIDATION ===
         model.eval()
         val_loss_sum = 0.0
+        val_constraint_sum = 0.0
 
         with torch.no_grad():
             for y, t in dl_va:
                 y, t = y.to(device), t.to(device)
                 p = model(y)
-                per_param_loss = F.smooth_l1_loss(p, t, reduction='none')
-                weighted_loss = (loss_weights * per_param_loss).mean()
-                val_loss_sum += weighted_loss.item() * y.size(0)
+                loss, constraint_penalty = physics_constrained_loss(
+                    p, t, loss_weights, base_loss_fn=F.smooth_l1_loss
+                )
+                val_loss_sum += loss.item() * y.size(0)
+                val_constraint_sum += constraint_penalty.item() * y.size(0)
 
         val_loss = val_loss_sum / len(ds_va)
+        val_constraint = val_constraint_sum / len(ds_va)
 
         # Update scheduler
         sched.step(val_loss)
         curr_lr = opt.param_groups[0]['lr']
 
-        # Print progress
-        print(f"Epoch {epoch:03d}/{epochs} | "
-              f"train: {train_loss:.5f} | "
-              f"val: {val_loss:.5f} | "
-              f"lr: {curr_lr:.2e}")
+        # Print progress (show constraint violations every 10 epochs)
+        if epoch % 10 == 0 or epoch == 1:
+            print(f"Epoch {epoch:03d}/{epochs} | "
+                  f"train: {train_loss:.5f} | "
+                  f"val: {val_loss:.5f} | "
+                  f"constraint: {val_constraint:.4f} | "
+                  f"lr: {curr_lr:.2e}")
+        else:
+            print(f"Epoch {epoch:03d}/{epochs} | "
+                  f"train: {train_loss:.5f} | "
+                  f"val: {val_loss:.5f} | "
+                  f"lr: {curr_lr:.2e}")
 
         # Save best model
         if val_loss < best_val_loss:
@@ -199,35 +224,48 @@ def train(
 # =============================================================================
 
 if __name__ == "__main__":
-    # Hardcoded configuration values
+    # =============================================================================
+    # CONFIGURATION
+    # =============================================================================
+    #
+    # IMPROVEMENTS v3 (Ziegler-Inspired Architecture):
+    # - K=15 kernel size (from Ziegler et al., up from K=7)
+    # - Progressive channel expansion: 32→48→64→96→128→128 (vs constant 64)
+    # - Attention-based pooling (preserves spatial info for Rp2)
+    # - 6 residual blocks with dilations up to 32 (RF >100% of curve with K=15)
+    # - Deeper MLP: 128→256→128→7
+    # - Physics-constrained loss (D01≤Dmax1, Rp1≤L1, etc.)
+    # - Balanced loss weights [1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5]
+    #
+    # Expected improvements over v2:
+    # - Rp2: 12.36% → 7-9% (K=15 + progressive channels)
+    # - L2: 5.86% → 3.5-4.5% (better feature extraction)
+    #
+    # v2 Results (100k samples):
+    # - Rp2: 12.36%, L2: 5.86%, Val loss: 0.01301
+    # =============================================================================
 
-    # ===========================
-
-    # 100,000 samples, dl=400
-    DATA_PATH = "datasets/dataset_100000_dl400.pkl"
-
-    # 10,000 samples, dl=400
-    # DATA_PATH = "datasets/dataset_10000_dl400.pkl"
-
-    # 1,000 samples, dl=400
-    # DATA_PATH = "datasets/dataset_1000_dl400.pkl"
-
-    # ===========================
+    # Dataset selection
+    # Full training (compare with v2)
+    DATA_PATH = "datasets/dataset_1000000_dl100_balanced.pkl"
+    # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
+    # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
 
     DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
-    MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"
+    MODEL_PATH = f"checkpoints/{DATASET_NAME}_v3.pt"  # v3 = Ziegler-inspired
 
-    # EPOCHS = 80
-    EPOCHS = 150  # Increased from 80 for better convergence with weighted loss
-
-    BATCH_SIZE = 128
-    LEARNING_RATE = 0.0015
+    # Training hyperparameters
+    EPOCHS = 100  # Full training for larger model
+    # EPOCHS = 20  # Quick test of v3 architecture
+    BATCH_SIZE = 256  # 128/256/512
+    LEARNING_RATE = 0.0015  # 0.0015
     WEIGHT_DECAY = 5e-4
 
-    VAL_SPLIT = 0.2  # 20% validation
-    MAX_VAL_SAMPLES = 1000  # Cap validation set size
+    VAL_SPLIT = 0.05  # 5% validation (50k samples for 1M dataset)
+    MAX_VAL_SAMPLES = None  # No cap - use percentage-based split
+    # MAX_VAL_SAMPLES = 50000  # Optional: cap at 50k if dataset is huge
 
-    USE_LOG_SPACE = True  # Apply log10 to curves before normalization
+    USE_LOG_SPACE = True  # Apply log10 to curves (critical for XRD!)
     SEED = 1234
 
     # Run training

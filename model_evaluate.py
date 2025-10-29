@@ -152,8 +152,25 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples):
 
 if __name__ == "__main__":
     # Hardcoded configuration values
+
+    # ===========================
+
+    # 100,000 samples, dl=400
     DATA_PATH = "datasets/dataset_100000_dl400.pkl"
-    MODEL_PATH = "checkpoints/dataset_100000_dl400.pt"
+
+    # 10,000 samples, dl=400
+    # DATA_PATH = "datasets/dataset_10000_dl400.pkl"
+
+    # 1,000 samples, dl=400
+    # DATA_PATH = "datasets/dataset_1000_dl400.pkl"
+
+    # ===========================
+
+    DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
+    MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"
+
+    # DATA_PATH = "datasets/dataset_100000_dl400.pkl"
+    # MODEL_PATH = "checkpoints/dataset_100000_dl400.pt"
 
     BATCH_SIZE = 256
     USE_LOG_SPACE = True  # Must match training

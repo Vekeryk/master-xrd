@@ -153,8 +153,8 @@ class PickleXRDDataset(torch.utils.data.Dataset):
             Yp = self.Y / (self.Y.amax(dim=1, keepdim=True) + 1e-12)
 
         # Additional normalization step
-        Yp = (Yp - Yp.amin(dim=1, keepdim=True)) / \
-            (Yp.amax(dim=1, keepdim=True) - Yp.amin(dim=1, keepdim=True) + 1e-12)
+        # Yp = (Yp - Yp.amin(dim=1, keepdim=True)) / \
+        #     (Yp.amax(dim=1, keepdim=True) - Yp.amin(dim=1, keepdim=True) + 1e-12)
 
         self.Yn = Yp.unsqueeze(1)  # [N, 1, L] for Conv1d
 

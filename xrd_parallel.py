@@ -151,28 +151,28 @@ def _compute_sublayer_loop_jit(
     for k in range(1, km + 1):
         # eta_a for sublayer k
         eta_a = -(eta0_a[k] * cmplxi +
-                 2 * np.pi * b_as * np.sin(2 * tb) * DeltaTeta_i /
-                 (Lambda * gamma0))
+                  2 * np.pi * b_as * np.sin(2 * tb) * DeltaTeta_i /
+                  (Lambda * gamma0))
 
         # sigmasp_a, sigmasn_a for sublayer k
         sigmasp_a = (np.pi * xhp_a_n[k] * C_n /
-                    (Lambda * np.sqrt(gamma0 * gammah)))
+                     (Lambda * np.sqrt(gamma0 * gammah)))
         sigmasn_a = (np.pi * xhn_a_n[k] * C_n /
-                    (Lambda * np.sqrt(gamma0 * gammah)))
+                     (Lambda * np.sqrt(gamma0 * gammah)))
 
         # YYs[k] for each sublayer
         if not asymmetric:
             YYs_k = (np.pi / Lambda / gamma0 *
-                    DDpd[k] * b_as *
-                    (np.cos(psi)**2 * np.tan(tb) +
-                     np.sin(psi) * np.cos(psi)) *
-                    2 * np.sin(2 * tb))
+                     DDpd[k] * b_as *
+                     (np.cos(psi)**2 * np.tan(tb) +
+                      np.sin(psi) * np.cos(psi)) *
+                     2 * np.sin(2 * tb))
         else:
             YYs_k = (np.pi / Lambda / gamma0 *
-                    DDpd[k] * b_as *
-                    (np.cos(psi)**2 * np.tan(tb) -
-                     np.sin(psi) * np.cos(psi)) *
-                    2 * np.sin(2 * tb))
+                     DDpd[k] * b_as *
+                     (np.cos(psi)**2 * np.tan(tb) -
+                      np.sin(psi) * np.cos(psi)) *
+                     2 * np.sin(2 * tb))
 
         YYs_k = eta_a + YYs_k
 
@@ -674,7 +674,8 @@ class HRXRDSimulator:
                             self.crystal.Lambda,
                             self.gamma0,
                             self.eta0_a,
-                            self.xhp_a[n],  # [k] indexing happens in JIT function
+                            # [k] indexing happens in JIT function
+                            self.xhp_a[n],
                             self.xhn_a[n],
                             self.C[n],
                             self.gammah,
@@ -935,7 +936,7 @@ def compute_curve_and_profile(array=None,
 # BENCHMARKING UTILITIES
 # =============================================================================
 
-def benchmark_comparison(n_samples=10, dl=400e-8):
+def benchmark_comparison(n_samples=10, dl=100e-8):
     """
     Compare performance of xrd_parallel vs original xrd.
 
@@ -982,7 +983,8 @@ def benchmark_comparison(n_samples=10, dl=400e-8):
         if (i + 1) % 5 == 0 or (i + 1) == n_samples:
             elapsed = time.time() - start_time
             rate = (i + 1) / elapsed
-            print(f"   Progress: {i+1}/{n_samples} samples, {rate:.2f} samples/sec")
+            print(
+                f"   Progress: {i+1}/{n_samples} samples, {rate:.2f} samples/sec")
 
     total_time = time.time() - start_time
     avg_time = total_time / n_samples
@@ -1002,7 +1004,7 @@ def benchmark_comparison(n_samples=10, dl=400e-8):
     }
 
 
-def benchmark_single_sample(dl=400e-8):
+def benchmark_single_sample(dl=100e-8):
     """
     Detailed benchmark of a single sample with step-by-step timing.
 
@@ -1074,11 +1076,11 @@ if __name__ == "__main__":
         print("\n🔥 NUMBA JIT BENCHMARK MODE\n")
 
         # Single sample detailed benchmark
-        benchmark_single_sample(dl=400e-8)
+        benchmark_single_sample(dl=100e-8)
 
         # Multi-sample benchmark
         n_samples = 20 if len(sys.argv) < 3 else int(sys.argv[2])
-        benchmark_comparison(n_samples=n_samples, dl=400e-8)
+        benchmark_comparison(n_samples=n_samples, dl=100e-8)
 
         print("\n💡 TIP: Compare with original xrd.py by running similar benchmark there")
         print("Expected speedup: 2-5x on RozrachKogerTT with Numba JIT\n")
@@ -1135,7 +1137,8 @@ if __name__ == "__main__":
         z_profile = np.array([(L - deformation.dl * k + deformation.dl / 2) / 1e-8
                               for k in range(1, simulator.km + 1)])
 
-        ax1.plot(z_profile, simulator.DD[1:], 'r-', label='Total DD', linewidth=2)
+        ax1.plot(z_profile, simulator.DD[1:],
+                 'r-', label='Total DD', linewidth=2)
         ax1.plot(z_profile, simulator.DDPL1[1:], 'b--', label='Asym Gaussian')
         ax1.plot(z_profile, simulator.DDPL2[1:], 'g:', label='Decay Gaussian')
         ax1.set_xlabel('Depth z (Å)')
@@ -1147,7 +1150,8 @@ if __name__ == "__main__":
         # Крива дифракційного відбивання
         ax2.plot(DeltaTeta, R_coger, 'darkgreen',
                  label='Coherent (Takagi-Taupin)', alpha=0.7)
-        ax2.plot(DeltaTeta, R_convolved, 'blue', label='Convolved', linewidth=2)
+        ax2.plot(DeltaTeta, R_convolved, 'blue',
+                 label='Convolved', linewidth=2)
         ax2.set_xlabel('Δθ (arcsec)')
         ax2.set_ylabel('Intensity (a.u.)')
         ax2.set_title('HRXRD Rocking Curve (NUMBA JIT)')

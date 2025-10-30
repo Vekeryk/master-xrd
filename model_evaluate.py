@@ -173,7 +173,7 @@ if __name__ == "__main__":
 
     # Dataset selection (must match training dataset)
     # Full evaluation (compare with v2)
-    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"
+    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
     # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
     # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
 

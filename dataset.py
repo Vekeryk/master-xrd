@@ -29,13 +29,20 @@ def generate_train_dataset(n_samples, dl=100e-8):
     - L2 <= L1
     """
     # Generate grids from MODEL_RANGES + GRID_STEPS (model_common.py - single source of truth!)
-    Dmax1_grid = arange_inclusive(MODEL_RANGES['Dmax1'][0], MODEL_RANGES['Dmax1'][1], GRID_STEPS['Dmax1'])
-    D01_grid = arange_inclusive(MODEL_RANGES['D01'][0], MODEL_RANGES['D01'][1], GRID_STEPS['D01'])
-    L1_grid = arange_inclusive(MODEL_RANGES['L1'][0] * 1e8, MODEL_RANGES['L1'][1] * 1e8, GRID_STEPS['L1'])
-    Rp1_grid = arange_inclusive(MODEL_RANGES['Rp1'][0] * 1e8, MODEL_RANGES['Rp1'][1] * 1e8, GRID_STEPS['Rp1'])
-    D02_grid = arange_inclusive(MODEL_RANGES['D02'][0], MODEL_RANGES['D02'][1], GRID_STEPS['D02'])
-    L2_grid = arange_inclusive(MODEL_RANGES['L2'][0] * 1e8, MODEL_RANGES['L2'][1] * 1e8, GRID_STEPS['L2'])
-    Rp2_grid = arange_inclusive(MODEL_RANGES['Rp2'][0] * 1e8, MODEL_RANGES['Rp2'][1] * 1e8, GRID_STEPS['Rp2'])
+    Dmax1_grid = arange_inclusive(
+        MODEL_RANGES['Dmax1'][0], MODEL_RANGES['Dmax1'][1], GRID_STEPS['Dmax1'])
+    D01_grid = arange_inclusive(
+        MODEL_RANGES['D01'][0], MODEL_RANGES['D01'][1], GRID_STEPS['D01'])
+    L1_grid = arange_inclusive(
+        MODEL_RANGES['L1'][0] * 1e8, MODEL_RANGES['L1'][1] * 1e8, GRID_STEPS['L1'])
+    Rp1_grid = arange_inclusive(
+        MODEL_RANGES['Rp1'][0] * 1e8, MODEL_RANGES['Rp1'][1] * 1e8, GRID_STEPS['Rp1'])
+    D02_grid = arange_inclusive(
+        MODEL_RANGES['D02'][0], MODEL_RANGES['D02'][1], GRID_STEPS['D02'])
+    L2_grid = arange_inclusive(
+        MODEL_RANGES['L2'][0] * 1e8, MODEL_RANGES['L2'][1] * 1e8, GRID_STEPS['L2'])
+    Rp2_grid = arange_inclusive(
+        MODEL_RANGES['Rp2'][0] * 1e8, MODEL_RANGES['Rp2'][1] * 1e8, GRID_STEPS['Rp2'])
 
     limit = 0.03  # constraint for D01 + D02
 
@@ -110,7 +117,7 @@ def generate_train_dataset(n_samples, dl=100e-8):
 if __name__ == "__main__":
     # Hardcoded parameters
     n_samples = 100_000
-    dl = 400e-8  # in cm (400 Angstroms)
+    dl = 100e-8  # in cm (100 Angstroms)
 
     # Convert dl to Angstroms for filename
     dl_angstrom = int(dl * 1e8)

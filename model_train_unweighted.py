@@ -69,14 +69,15 @@ def train(
     X, Y = load_dataset(Path(data_path))
     n = X.size(0)
 
-    # Weighted loss for parameter importance
+    # UNWEIGHTED loss - all parameters equal importance
+    # Testing baseline performance on improved 7D stratified dataset
     # Order: Dmax1, D01, L1, Rp1, D02, L2, Rp2
-    # Higher weights for parameters with poor performance (L2, Rp2)
-    # Balanced weights after architectural improvements
     loss_weights = torch.tensor(
-        [1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5],
+        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         device=device
     )
+    print(f"\n⚖️  UNWEIGHTED Loss (Clean Baseline)")
+    print(f"   All parameters have equal weight: {loss_weights.cpu().tolist()}")
 
     # Train/val split
     idx = torch.randperm(n)
@@ -111,9 +112,9 @@ def train(
     print(f"\n🧠 Model: XRDRegressor")
     print(f"   Parameters to predict: {PARAM_NAMES}")
     print(f"   Output dim: {len(PARAM_NAMES)}")
-    print(f"\n⚖️  Physics-Informed Loss Configuration:")
+    print(f"\n⚖️  Loss Configuration:")
     print(f"   Weights: {loss_weights.cpu().numpy()}")
-    print(f"   Higher weights for L2 and Rp2 (position/thickness params)")
+    print(f"   UNWEIGHTED - все параметри рівноцінні")
     print(f"   Physics constraints: D01≤Dmax1, D01+D02≤0.03, Rp1≤L1, L2≤L1")
 
     # Optimizer and scheduler
@@ -225,34 +226,28 @@ def train(
 
 if __name__ == "__main__":
     # =============================================================================
-    # CONFIGURATION
+    # CONFIGURATION - UNWEIGHTED BASELINE
     # =============================================================================
     #
-    # IMPROVEMENTS v3 (Ziegler-Inspired Architecture):
-    # - K=15 kernel size (from Ziegler et al., up from K=7)
-    # - Progressive channel expansion: 32→48→64→96→128→128 (vs constant 64)
-    # - Attention-based pooling (preserves spatial info for Rp2)
-    # - 6 residual blocks with dilations up to 32 (RF >100% of curve with K=15)
+    # Testing model on improved 7D stratified dataset WITHOUT weighted loss
+    #
+    # Architecture (Ziegler-Inspired):
+    # - K=15 kernel size
+    # - Progressive channel expansion: 32→48→64→96→128→128
+    # - Attention-based pooling
+    # - 6 residual blocks with dilations up to 32
     # - Deeper MLP: 128→256→128→7
     # - Physics-constrained loss (D01≤Dmax1, Rp1≤L1, etc.)
-    # - Balanced loss weights [1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5]
+    # - **UNWEIGHTED loss: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]**
     #
-    # Expected improvements over v2:
-    # - Rp2: 12.36% → 7-9% (K=15 + progressive channels)
-    # - L2: 5.86% → 3.5-4.5% (better feature extraction)
-    #
-    # v2 Results (100k samples):
-    # - Rp2: 12.36%, L2: 5.86%, Val loss: 0.01301
+    # Goal: Evaluate if improved 7D stratified dataset removes need for weighted loss
     # =============================================================================
 
-    # Dataset selection
-    # Full training (compare with v2)
-    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"
-    # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
-    # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
+    # Dataset selection - NEW 7D stratified dataset
+    DATA_PATH = "datasets/dataset_10000_dl100_7d_20251030_124511.pkl"
 
     DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
-    MODEL_PATH = f"checkpoints/{DATASET_NAME}_v3.pt"  # v3 = Ziegler-inspired
+    MODEL_PATH = f"checkpoints/{DATASET_NAME}_unweighted.pt"  # Clean baseline без weighted loss
 
     # Training hyperparameters
     EPOCHS = 100  # Full training for larger model

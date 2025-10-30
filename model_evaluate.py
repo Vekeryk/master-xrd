@@ -15,9 +15,10 @@ The script will:
 
 from pathlib import Path
 import torch
+from tqdm import tqdm
 from model_common import (
     XRDRegressor,
-    PickleXRDDataset,
+    NormalizedXRDDataset,
     load_dataset,
     denorm_params,
     get_device,
@@ -62,13 +63,14 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples):
             f"   Checkpoint: epoch {ckpt['epoch']}, val_loss {ckpt.get('val_loss', 'N/A')}")
 
     # Create dataset
-    ds = PickleXRDDataset(X, Y, log_space=use_log_space, train=False)
+    ds = NormalizedXRDDataset(X, Y, log_space=use_log_space, train=False)
     dl = torch.utils.data.DataLoader(ds, batch_size=batch_size)
 
     # Run predictions
     print(f"\n🔮 Running predictions on {len(ds)} samples...")
     preds = []
-    for y, _ in dl:
+
+    for y, _ in tqdm(dl, desc="Evaluating", unit="batch"):
         p = model(y.to(device))
         preds.append(p.cpu())
 
@@ -170,7 +172,8 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset selection (must match training dataset)
-    DATA_PATH = "datasets/dataset_100000_dl400.pkl"  # Full evaluation (compare with v2)
+    # Full evaluation (compare with v2)
+    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"
     # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
     # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
 

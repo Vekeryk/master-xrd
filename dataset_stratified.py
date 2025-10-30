@@ -28,14 +28,25 @@ import os
 from datetime import datetime
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
+
+# Import from model_common.py - single source of truth!
+from model_common import RANGES as MODEL_RANGES, GRID_STEPS
 from collections import defaultdict
 
 reload(xrd)
 
 
 def arange_inclusive(start, stop, step):
-    """Helper function to create inclusive ranges"""
-    return np.arange(start, stop + 0.5 * step, step, dtype=float)
+    """
+    Helper function to create inclusive ranges.
+    Works correctly for both positive and negative ranges.
+
+    FIX: Previous version had bug with negative ranges (e.g., Rp2: -6500 → -5)
+    """
+    # Calculate exact number of steps
+    n_steps = round((stop - start) / step)
+    # Generate array with exact number of steps (more reliable than np.arange)
+    return np.array([start + i * step for i in range(n_steps + 1)], dtype=float)
 
 
 # =============================================================================
@@ -51,7 +62,11 @@ def _generate_single_sample(args):
         args: tuple of (_Dmax1, _D01, _L1, _Rp1, _D02, _L2, _Rp2, dl)
 
     Returns:
-        tuple: (parameters_list, curve_ML_Y)
+        tuple: (parameters_list, full_curve_Y_R_vseZ)
+
+    Note:
+        Returns FULL curve (Y_R_vseZ, 700 points) instead of cropped (ML_Y, 650 points).
+        Cropping will be done during dataset loading based on crop_params.
     """
     _Dmax1, _D01, _L1, _Rp1, _D02, _L2, _Rp2, dl = args
 
@@ -75,7 +90,8 @@ def _generate_single_sample(args):
 
     curve, profile = xrd.compute_curve_and_profile(params_obj=params_obj)
 
-    return ([_Dmax1, _D01, _L1_cm, _Rp1_cm, _D02, _L2_cm, _Rp2_cm], curve.ML_Y)
+    # Return FULL curve (700 points) instead of cropped ML_Y (650 points)
+    return ([_Dmax1, _D01, _L1_cm, _Rp1_cm, _D02, _L2_cm, _Rp2_cm], curve.Y_R_vseZ)
 
 
 # =============================================================================
@@ -89,16 +105,22 @@ def build_valid_combinations_dict():
     Returns:
         dict: {L2_value: [list of combinations with this L2]}
     """
-    # Define parameter grids - IMPROVED with finer granularity
-    Dmax1_grid = arange_inclusive(0.0025, 0.0250, 0.0025)  # 10 values
-    D01_grid = arange_inclusive(0.0025, 0.0250, 0.0025)    # 10 values
-    L1_grid = arange_inclusive(500., 7000., 500.)          # 14 values
-    Rp1_grid = arange_inclusive(490., 4990., 500.)         # 10 values
-    D02_grid = arange_inclusive(0.0025, 0.0250, 0.0025)    # 10 values
+    # ============================================================================
+    # Generate grids from MODEL_RANGES + GRID_STEPS (model_common.py - single source of truth!)
+    # ============================================================================
+    # Steps визначають густоту сітки, min/max беруться з MODEL_RANGES
 
-    # IMPROVED: Finer grid for L2 and Rp2 (reduces gaps)
-    L2_grid = arange_inclusive(500., 5000., 500.)          # 10 values (was 5)
-    Rp2_grid = arange_inclusive(-6010., -10., 500.)        # 13 values (was 7)
+    # Генерувати гріди з MODEL_RANGES та GRID_STEPS
+    Dmax1_grid = arange_inclusive(MODEL_RANGES['Dmax1'][0], MODEL_RANGES['Dmax1'][1], GRID_STEPS['Dmax1'])
+    D01_grid = arange_inclusive(MODEL_RANGES['D01'][0], MODEL_RANGES['D01'][1], GRID_STEPS['D01'])
+
+    # L1, Rp1, L2, Rp2 в model_common.py в см → конвертувати в Å
+    L1_grid = arange_inclusive(MODEL_RANGES['L1'][0] * 1e8, MODEL_RANGES['L1'][1] * 1e8, GRID_STEPS['L1'])
+    Rp1_grid = arange_inclusive(MODEL_RANGES['Rp1'][0] * 1e8, MODEL_RANGES['Rp1'][1] * 1e8, GRID_STEPS['Rp1'])
+
+    D02_grid = arange_inclusive(MODEL_RANGES['D02'][0], MODEL_RANGES['D02'][1], GRID_STEPS['D02'])
+    L2_grid = arange_inclusive(MODEL_RANGES['L2'][0] * 1e8, MODEL_RANGES['L2'][1] * 1e8, GRID_STEPS['L2'])
+    Rp2_grid = arange_inclusive(MODEL_RANGES['Rp2'][0] * 1e8, MODEL_RANGES['Rp2'][1] * 1e8, GRID_STEPS['Rp2'])
 
     limit = 0.03  # constraint for D01 + D02
 
@@ -322,15 +344,17 @@ def verify_distribution(X, dataset_name="stratified"):
 
 if __name__ == "__main__":
     # Configuration
-    # n_samples = 1_000  # Quick test (3 seconds) - VERIFIED WORKING ✅
-    n_samples = 1_000_000  # Production: 200k for good balance between quality and time
+    # n_samples = 100  # Quick verification test (Grid 5)
+    n_samples = 10_000  # Quick testing after RANGES fix (~25 min)
+    # n_samples = 1_000_000  # Production: full dataset for final thesis results
     dl = 100e-8  # in cm (100 Angstroms)
     n_workers = None  # Auto-detect
     strategy = 'balanced'  # 'balanced' or 'proportional'
 
     # Convert dl to Angstroms for filename
     dl_angstrom = int(dl * 1e8)
-    output_file = f"datasets/dataset_{n_samples}_dl{dl_angstrom}_balanced.pkl"
+    # _grid5 постфікс
+    output_file = f"datasets/dataset_{n_samples}_dl{dl_angstrom}_grid5.pkl"
 
     print("=" * 70)
     print("STRATIFIED DATASET GENERATION")
@@ -361,14 +385,23 @@ if __name__ == "__main__":
 
     # Prepare data for saving
     dataset = {
-        'X': X.cpu().numpy(),
-        'Y': Y.cpu().numpy(),
+        'X': X.cpu().numpy(),  # [N, 7] параметри
+        'Y': Y.cpu().numpy(),  # [N, 700] ПОВНІ криві (Y_R_vseZ)
+
+        # Параметри обрізки для ML моделі
+        'crop_params': {
+            'start_ML': 50,   # Початковий індекс для обрізки
+            'm1': 700,        # Кінцевий індекс (не включається)
+            'cropped_length': 650,  # Довжина обрізаної кривої
+            'note': 'Use Y[:, start_ML:m1] to get cropped curves for ML training'
+        },
+
+        # Метаінформація датасету
         'n_samples': n_samples,
         'dl': dl,
         'dl_angstrom': dl_angstrom,
         'sampling_method': 'stratified_balanced',
         'timestamp': datetime.now().isoformat(),
-        'device': str(X.device),
         'grid_info': {
             'L2_step': 500,  # Angstroms
             'Rp2_step': 500,  # Angstroms

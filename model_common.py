@@ -3,7 +3,7 @@ XRD Model Architecture and Utilities
 =====================================
 Shared components for training and evaluation:
 - Model architecture (XRDRegressor)
-- Dataset class (PickleXRDDataset)
+- Dataset class (NormalizedXRDDataset)
 - Parameter ranges and normalization
 - Helper functions
 """
@@ -20,19 +20,36 @@ import torch.nn.functional as F
 # PARAMETER RANGES AND CONFIGURATION
 # =============================================================================
 
-# Parameter ranges for normalization
+# Parameter ranges for normalization (GRID 5)
 # Order matters! Must match X columns in dataset
+# ⚠️ ВАЖЛИВО: Ці діапазони МУСИТЬ відповідати грідам у dataset_stratified.py!
+# ⚠️ ВАЖЛИВО: L1, Rp1, L2, Rp2 в СМ (бо X зберігається в см)!
+# ⚠️ ВАЖЛИВО: max значення скориговані щоб (max-min) було кратне step!
+# Якщо не відповідають → denormalization працює неправильно
 RANGES = {
-    "Dmax1": (0.002, 0.030),
-    "D01": (0.0010, 0.030),
-    "L1": (1000e-8, 7000e-8),
-    "Rp1": (0.0, 7000e-8),
-    "D02": (0.0020, 0.0300),
-    "L2": (1000e-8, 7000e-8),
-    "Rp2": (-6000e-8, 0.0),
+    "Dmax1": (0.0010, 0.0310),      # Grid 5: 0.031 покриває 0.030
+    "D01":   (0.0005, 0.0305),      # Grid 5: 0.0305 покриває експеримент 0.000943
+    "L1":    (500e-8, 7000e-8),     # 500 Å = 500e-8 см, 7000 Å = 7000e-8 см ✓
+    "Rp1":   (50e-8, 5050e-8),      # 50 Å = 50e-8 см, 5050 Å = 5050e-8 см (покриває 5000)
+    "D02":   (0.0010, 0.0310),      # Grid 5: 0.031 покриває 0.030
+    "L2":    (500e-8, 5000e-8),     # 500 Å = 500e-8 см, 5000 Å = 5000e-8 см ✓
+    "Rp2":   (-6500e-8, 0e-8),      # Grid 5: 0 Å покриває експеримент -50 Å та -500 Å
 }
 
 PARAM_NAMES = list(RANGES.keys())
+
+# Grid steps for dataset generation (defines grid density)
+# ⚠️ ВАЖЛИВО: Використовуйте ці значення у dataset.py, dataset_parallel.py, dataset_stratified.py
+# Steps визначають густоту сітки, min/max беруться з RANGES
+GRID_STEPS = {
+    'Dmax1': 0.0025,
+    'D01': 0.0025,
+    'L1': 500.,      # Ångströms
+    'Rp1': 500.,     # Ångströms
+    'D02': 0.0025,
+    'L2': 500.,      # Ångströms
+    'Rp2': 500.,     # Ångströms
+}
 
 
 # =============================================================================
@@ -59,7 +76,7 @@ def get_device():
     return torch.device("cpu")
 
 
-def load_dataset(path: Path):
+def load_dataset(path: Path, use_full_curve: bool = False):
     """
     Load pickled dataset.
 
@@ -67,12 +84,32 @@ def load_dataset(path: Path):
     Where:
         X = parameters to predict [Dmax1, D01, L1, Rp1, D02, L2, Rp2]
         Y = XRD rocking curves
+
+    Args:
+        path: Path to pickle file
+        use_full_curve: If False (default), apply crop_params if available.
+                       If True, use full curve without cropping.
+
+    Returns:
+        X: Parameters tensor [N, P]
+        Y: Curves tensor [N, L] (cropped or full depending on settings)
     """
     with open(path, "rb") as f:
         data = pickle.load(f)
 
     X = torch.as_tensor(data["X"]).float()  # [N, P]
     Y = torch.as_tensor(data["Y"]).float()  # [N, L]
+
+    # Auto-crop if crop_params available and not using full curve
+    if not use_full_curve and "crop_params" in data:
+        crop_info = data["crop_params"]
+        start_ML = crop_info.get("start_ML", 50)
+        m1 = crop_info.get("m1", 700)
+
+        print(f"✓ Applying crop_params: Y[:, {start_ML}:{m1}]")
+        print(f"  Before crop: {tuple(Y.shape)}")
+        Y = Y[:, start_ML:m1]
+        print(f"  After crop:  {tuple(Y.shape)}")
 
     assert X.ndim == 2, f"X must be 2D [N,P], got {tuple(X.shape)}"
     assert Y.ndim == 2, f"Y must be 2D [N,L], got {tuple(Y.shape)}"
@@ -180,9 +217,9 @@ def physics_constrained_loss(predictions, targets, loss_weights, base_loss_fn=No
 # DATASET CLASS
 # =============================================================================
 
-class PickleXRDDataset(torch.utils.data.Dataset):
+class NormalizedXRDDataset(torch.utils.data.Dataset):
     """
-    PyTorch Dataset for XRD rocking curves.
+    PyTorch Dataset for XRD rocking curves with automatic normalization.
 
     Performs:
     - Log-space normalization of curves (optional)

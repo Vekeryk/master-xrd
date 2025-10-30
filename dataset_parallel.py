@@ -8,6 +8,10 @@ import os
 from datetime import datetime
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
+
+# Import from model_common.py - single source of truth!
+from model_common import RANGES as MODEL_RANGES, GRID_STEPS
+
 reload(xrd)
 
 
@@ -84,14 +88,14 @@ def generate_train_dataset(n_samples, dl=100e-8, n_workers=None):
 
     print(f"Using {n_workers} parallel workers")
 
-    # Define parameter grids (from perebir.py - optimal grid)
-    Dmax1_grid = arange_inclusive(0.0025, 0.0250, 0.0025)
-    D01_grid = arange_inclusive(0.0025, 0.0250, 0.0025)
-    L1_grid = arange_inclusive(500., 7000., 500.)
-    Rp1_grid = arange_inclusive(490., 4990., 500.)
-    D02_grid = arange_inclusive(0.0025, 0.0250, 0.0025)
-    L2_grid = arange_inclusive(500., 5000., 1000.)
-    Rp2_grid = arange_inclusive(-6010., -10., 1000.)
+    # Generate grids from MODEL_RANGES + GRID_STEPS (model_common.py - single source of truth!)
+    Dmax1_grid = arange_inclusive(MODEL_RANGES['Dmax1'][0], MODEL_RANGES['Dmax1'][1], GRID_STEPS['Dmax1'])
+    D01_grid = arange_inclusive(MODEL_RANGES['D01'][0], MODEL_RANGES['D01'][1], GRID_STEPS['D01'])
+    L1_grid = arange_inclusive(MODEL_RANGES['L1'][0] * 1e8, MODEL_RANGES['L1'][1] * 1e8, GRID_STEPS['L1'])
+    Rp1_grid = arange_inclusive(MODEL_RANGES['Rp1'][0] * 1e8, MODEL_RANGES['Rp1'][1] * 1e8, GRID_STEPS['Rp1'])
+    D02_grid = arange_inclusive(MODEL_RANGES['D02'][0], MODEL_RANGES['D02'][1], GRID_STEPS['D02'])
+    L2_grid = arange_inclusive(MODEL_RANGES['L2'][0] * 1e8, MODEL_RANGES['L2'][1] * 1e8, GRID_STEPS['L2'])
+    Rp2_grid = arange_inclusive(MODEL_RANGES['Rp2'][0] * 1e8, MODEL_RANGES['Rp2'][1] * 1e8, GRID_STEPS['Rp2'])
 
     limit = 0.03  # constraint for D01 + D02
 

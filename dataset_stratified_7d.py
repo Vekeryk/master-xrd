@@ -397,7 +397,7 @@ def generate_dataset_7d(n_samples=10000, dl=100e-8, n_bins_per_param=5, output_d
 
 if __name__ == "__main__":
     # Configuration
-    N_SAMPLES = 10000
+    N_SAMPLES = 1_000_000
     DL = 100e-8  # 100 Angstroms
     N_BINS_PER_PARAM = 3  # Start with 3 bins (3^7 = 2187 bins)
 

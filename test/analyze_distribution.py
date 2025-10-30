@@ -54,9 +54,10 @@ for i in range(len(PARAM_NAMES), len(axes)):
     fig.delaxes(axes[i])
 
 plt.tight_layout()
-plt.savefig('analysis_reports/7d_distributions_bar.png', dpi=150, bbox_inches='tight')
+plt.savefig('analysis_report/7d_distributions_bar.png',
+            dpi=150, bbox_inches='tight')
 plt.show()
 
-print("\n" + "="*80)
-print("✅ Saved to analysis_reports/7d_distributions_bar.png")
-print("="*80)
+print("\n" + "=" * 80)
+print("✅ Saved to analysis_report/7d_distributions_bar.png")
+print("=" * 80)

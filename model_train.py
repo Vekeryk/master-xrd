@@ -42,6 +42,8 @@ def train(
     val_split,
     max_val_samples,
     use_log_space,
+    use_full_curve,
+    loss_weights,
     seed
 ):
     """
@@ -57,6 +59,8 @@ def train(
         val_split: Fraction of data for validation (0.0 to 1.0)
         max_val_samples: Maximum number of validation samples
         use_log_space: Apply log10 transformation to curves
+        use_full_curve: If True, use full curve without cropping
+        loss_weights: Tensor of weights for each parameter [7]
         seed: Random seed for reproducibility
     """
     print("=" * 70)
@@ -66,17 +70,11 @@ def train(
     # Setup
     set_seed(seed)
     device = get_device()
-    X, Y = load_dataset(Path(data_path))
+    X, Y = load_dataset(Path(data_path), use_full_curve=use_full_curve)
     n = X.size(0)
 
-    # Weighted loss for parameter importance
-    # Order: Dmax1, D01, L1, Rp1, D02, L2, Rp2
-    # Higher weights for parameters with poor performance (L2, Rp2)
-    # Balanced weights after architectural improvements
-    loss_weights = torch.tensor(
-        [1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5],
-        device=device
-    )
+    # Move loss weights to device
+    loss_weights = loss_weights.to(device)
 
     # Train/val split
     idx = torch.randperm(n)
@@ -111,9 +109,17 @@ def train(
     print(f"\n🧠 Model: XRDRegressor")
     print(f"   Parameters to predict: {PARAM_NAMES}")
     print(f"   Output dim: {len(PARAM_NAMES)}")
-    print(f"\n⚖️  Physics-Informed Loss Configuration:")
-    print(f"   Weights: {loss_weights.cpu().numpy()}")
-    print(f"   Higher weights for L2 and Rp2 (position/thickness params)")
+
+    # Check if weighted or unweighted
+    is_weighted = not torch.allclose(loss_weights, torch.ones_like(loss_weights))
+
+    print(f"\n⚖️  Loss Configuration:")
+    if is_weighted:
+        print(f"   WEIGHTED loss: {loss_weights.cpu().numpy()}")
+        print(f"   Higher weights for challenging parameters (L2, Rp2)")
+    else:
+        print(f"   UNWEIGHTED loss: {loss_weights.cpu().numpy()}")
+        print(f"   All parameters have equal importance")
     print(f"   Physics constraints: D01≤Dmax1, D01+D02≤0.03, Rp1≤L1, L2≤L1")
 
     # Optimizer and scheduler
@@ -235,7 +241,6 @@ if __name__ == "__main__":
     # - 6 residual blocks with dilations up to 32 (RF >100% of curve with K=15)
     # - Deeper MLP: 128→256→128→7
     # - Physics-constrained loss (D01≤Dmax1, Rp1≤L1, etc.)
-    # - Balanced loss weights [1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5]
     #
     # Expected improvements over v2:
     # - Rp2: 12.36% → 7-9% (K=15 + progressive channels)
@@ -245,14 +250,49 @@ if __name__ == "__main__":
     # - Rp2: 12.36%, L2: 5.86%, Val loss: 0.01301
     # =============================================================================
 
+    # =============================================================================
+    # TRAINING MODE FLAGS
+    # =============================================================================
+
+    # Weighted loss: Use parameter-specific weights vs equal weights
+    WEIGHTED_TRAINING = True
+    # WEIGHTED_TRAINING = False  # Unweighted baseline
+
+    # Full curve training (no cropping)
+    FULL_CURVE_TRAINING = False
+    # FULL_CURVE_TRAINING = True  # Enable for full curve training
+
+    # =============================================================================
+    # LOSS WEIGHTS
+    # =============================================================================
+    # Order: Dmax1, D01, L1, Rp1, D02, L2, Rp2
+
+    if WEIGHTED_TRAINING:
+        # Higher weights for challenging parameters (L2, Rp2)
+        LOSS_WEIGHTS = torch.tensor([1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5])
+    else:
+        # Unweighted: all parameters equal importance
+        LOSS_WEIGHTS = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+
+    # =============================================================================
+    # DATASET AND MODEL PATH
+    # =============================================================================
+
     # Dataset selection
-    # Full training (compare with v2)
-    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"
-    # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
+    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
+    # DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
     # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
 
     DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
-    MODEL_PATH = f"checkpoints/{DATASET_NAME}_v3.pt"  # v3 = Ziegler-inspired
+
+    # Build model path with suffixes based on training mode
+    model_suffix = "v3"
+    if not WEIGHTED_TRAINING:
+        model_suffix += "_unweighted"
+    if FULL_CURVE_TRAINING:
+        model_suffix += "_full"
+
+    MODEL_PATH = f"checkpoints/{DATASET_NAME}_{model_suffix}.pt"
 
     # Training hyperparameters
     EPOCHS = 100  # Full training for larger model
@@ -268,7 +308,20 @@ if __name__ == "__main__":
     USE_LOG_SPACE = True  # Apply log10 to curves (critical for XRD!)
     SEED = 1234
 
-    # Run training
+    # =============================================================================
+    # RUN TRAINING
+    # =============================================================================
+
+    print(f"\n{'='*70}")
+    print(f"TRAINING CONFIGURATION SUMMARY")
+    print(f"{'='*70}")
+    print(f"Dataset: {DATA_PATH}")
+    print(f"Model: {MODEL_PATH}")
+    print(f"Weighted loss: {WEIGHTED_TRAINING}")
+    print(f"Full curve: {FULL_CURVE_TRAINING}")
+    print(f"Loss weights: {LOSS_WEIGHTS.tolist()}")
+    print(f"{'='*70}\n")
+
     train(
         data_path=DATA_PATH,
         model_path=MODEL_PATH,
@@ -279,5 +332,7 @@ if __name__ == "__main__":
         val_split=VAL_SPLIT,
         max_val_samples=MAX_VAL_SAMPLES,
         use_log_space=USE_LOG_SPACE,
+        use_full_curve=FULL_CURVE_TRAINING,
+        loss_weights=LOSS_WEIGHTS,
         seed=SEED
     )

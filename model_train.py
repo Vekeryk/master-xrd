@@ -256,12 +256,12 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Weighted loss: Use parameter-specific weights vs equal weights
-    WEIGHTED_TRAINING = True
     # WEIGHTED_TRAINING = False  # Unweighted baseline
+    WEIGHTED_TRAINING = True
 
     # Full curve training (no cropping)
+    # FULL_CURVE_TRAINING = True # Enable for full curve training
     FULL_CURVE_TRAINING = False
-    # FULL_CURVE_TRAINING = True  # Enable for full curve training
 
     # Log-space transformation: Apply log10 to curves before normalization
     USE_LOG_SPACE = True  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
@@ -284,9 +284,9 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset selection
-    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
-    # DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
-    # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
+    # DATA_PATH = "datasets/dataset_1000_dl100_7d.pkl"   # For debugging
+    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
+    # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"  # For mid
 
     DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
 

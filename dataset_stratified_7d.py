@@ -67,7 +67,8 @@ def _generate_single_sample(args):
         dl=dl
     )
 
-    curve, profile = xrd.compute_curve_and_profile(params_obj=params_obj)
+    curve, profile = xrd.compute_curve_and_profile(
+        params_obj=params_obj)
 
     return ([_Dmax1, _D01, _L1_cm, _Rp1_cm, _D02, _L2_cm, _Rp2_cm], curve.Y_R_vseZ)
 
@@ -397,7 +398,7 @@ def generate_dataset_7d(n_samples=10000, dl=100e-8, n_bins_per_param=5, output_d
 
 if __name__ == "__main__":
     # Configuration
-    N_SAMPLES = 1_000_000
+    N_SAMPLES = 100_000
     DL = 100e-8  # 100 Angstroms
     N_BINS_PER_PARAM = 3  # Start with 3 bins (3^7 = 2187 bins)
 

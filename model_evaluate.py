@@ -32,7 +32,7 @@ from model_common import (
 # =============================================================================
 
 @torch.no_grad()
-def evaluate(data_path, model_path, batch_size, use_log_space, show_examples):
+def evaluate(data_path, model_path, batch_size, use_log_space, show_examples, use_full_curve=True):
     """
     Evaluate trained model and display metrics.
 
@@ -49,7 +49,7 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples):
 
     # Setup
     device = get_device()
-    X, Y = load_dataset(Path(data_path))
+    X, Y = load_dataset(Path(data_path), use_full_curve=use_full_curve)
 
     # Load model
     print(f"\n📦 Loading model from: {model_path}")
@@ -173,19 +173,30 @@ if __name__ == "__main__":
 
     # Dataset selection (must match training dataset)
     # Full evaluation (compare with v2)
-    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
-    # DATA_PATH = "datasets/dataset_10000_dl100_jit.pkl"  # For quick testing v3
-    # DATA_PATH = "datasets/dataset_1000_dl100_jit.pkl"   # For debugging
+    # DATA_PATH = "datasets/dataset_1000_dl100_7d.pkl"   # For debugging
+    # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_full.pt"
+    # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_unweighted_full.pt"
 
-    DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
+    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
+    # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_full.pt"
+    MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3.pt"
+    # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
+
+    # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl" # For mid
+    # MODEL_PATH = f"checkpoints/dataset_100000_dl100_7d_v3_unweighted_full.pt"
+
+    # DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
 
     # Model path - use v3 for Ziegler-inspired model
-    MODEL_PATH = f"checkpoints/{DATASET_NAME}_v3.pt"
+    # MODEL_PATH = f"checkpoints/{DATASET_NAME}_v3.pt"
+    # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
+
     # MODEL_PATH = f"checkpoints/{DATASET_NAME}_v2.pt"  # v2 physics-informed (for comparison)
     # MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"  # Old baseline model (for comparison)
 
     BATCH_SIZE = 256
     USE_LOG_SPACE = True  # Must match training setting
+    USE_FULL_CURVE = False  # Must match training setting
 
     SHOW_EXAMPLES = 10  # Number of random examples to display (0 to disable)
 
@@ -195,5 +206,6 @@ if __name__ == "__main__":
         model_path=MODEL_PATH,
         batch_size=BATCH_SIZE,
         use_log_space=USE_LOG_SPACE,
-        show_examples=SHOW_EXAMPLES
+        show_examples=SHOW_EXAMPLES,
+        use_full_curve=USE_FULL_CURVE
     )

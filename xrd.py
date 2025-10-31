@@ -858,7 +858,7 @@ def compute_curve_and_profile(array=None,
                               params_obj: DeformationProfile = None,
                               verbose=False,
                               dl=100e-8,
-                              bicrystal: bool = True):
+                              bicrystal: bool = False):
     """
     Compute XRD curve and deformation profile.
 
@@ -875,9 +875,10 @@ def compute_curve_and_profile(array=None,
     film = None
 
     if bicrystal:
+        print("Attention! Bicrystal is used!")
         film = create_YIG_film()
-    else:
-        print("Монокристал GGG буде використаний для симуляції.")
+    # else:
+    #     print("Монокристал GGG буде використаний для симуляції.")
 
     geometry = GeometryParameters(psi=0.0, asymmetric=False)
 

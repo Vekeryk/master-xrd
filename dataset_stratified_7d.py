@@ -19,7 +19,7 @@ Usage:
 
 import numpy as np
 import torch
-import xrd_parallel as xrd
+import xrd
 from helpers import get_device
 from importlib import reload
 import pickle

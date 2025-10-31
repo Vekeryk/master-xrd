@@ -32,3 +32,133 @@
 У даній роботі під X-променевими кривими дифракційного відбивання маються на увазі rocking curves, отримані методом високороздільної рентгенівської дифрактометрії (HRXRD, double-crystal diffractometry), що відрізняється від X-ray reflectivity (XRR) і традиційного powder XRD.
 
 Моя робота зосереджена на **аналізі двокристальних кривих дифракційного відбивання (HRXRD rocking curves)** від приповерхневих шарів монокристалів з дефектами. Ви прагнете **автоматизовано підбирати структурні параметри**, такі як товщина шару, шорсткість межі, густина, **профілі деформації** та дефекти, враховуючи як когерентну, так і дифузну складові рентгенівського розсіяння
+
+---
+
+## 🔧 Технічні деталі та важливі знання
+
+### ML Model Architecture (v3 - Ziegler-Inspired)
+
+- **Архітектура:** 1D CNN з residual blocks
+- **Kernel size:** K=15 (за Ziegler et al.)
+- **Канали:** Progressive expansion 32→48→64→96→128→128
+- **Residual blocks:** 6 блоків з dilation 1,2,4,8,16,32
+- **Pooling:** Attention-based pooling (замість GAP)
+- **MLP head:** 128→256→128→7 з Dropout(0.2)
+- **Output:** 7 параметрів [Dmax1, D01, L1, Rp1, D02, L2, Rp2]
+
+### ⚠️ КРИТИЧНО ВАЖЛИВО: model.eval()
+
+**ЗАВЖДИ використовуй `model.eval()` перед inference!**
+
+### Dataset Generation
+
+**Поточний підхід:** 7D stratified sampling (dataset_stratified_7d.py)
+
+**Фізичні constraints (nested):**
+
+1. `D01 <= Dmax1`
+2. `D01 + D02 <= 0.03`
+3. `Rp1 <= L1`
+4. `L2 <= L1`
+
+**Статус uniform distribution:**
+
+- Chi-square test: всі 7 параметрів **non-uniform** (p < 0.05)
+- Imbalance: 4.26x ratio (min 249, max 1061 counts)
+- Причина: nested constraints створюють bins різного розміру
+- ✅ Прийнятно: покращення від >100x до 4.26x
+
+**Датасети:**
+
+- `dataset_10000_dl100_7d.pkl` - 10k samples для швидкого тестування
+- `dataset_100000_dl100_7d.pkl` - 100k samples для повного тренування
+
+### Training Configuration
+
+**Файл:** `model_train.py` (unified script)
+
+**Прапорці:**
+
+```python
+WEIGHTED_TRAINING = True/False    # Weighted vs unweighted loss
+FULL_CURVE_TRAINING = True/False  # Full curve vs cropped [50:701]
+```
+
+**Loss weights (якщо WEIGHTED_TRAINING=True):**
+
+```python
+LOSS_WEIGHTS = torch.tensor([1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5])
+# Order: [Dmax1, D01, L1, Rp1, D02, L2, Rp2]
+```
+
+**Назви моделей (автоматичні):**
+
+- Weighted + Cropped: `dataset_100000_dl100_7d_v3.pt`
+- Weighted + Full: `dataset_100000_dl100_7d_v3_full.pt`
+- Unweighted + Cropped: `dataset_100000_dl100_7d_v3_unweighted.pt`
+- Unweighted + Full: `dataset_100000_dl100_7d_v3_unweighted_full.pt`
+
+**Preprocessing має співпадати між training і inference!**
+
+1. **Crop params:**
+
+   - Training: `load_dataset(path, use_full_curve=False)` → Y[:, 50:701] (651 points)
+   - Inference: **MUST USE SAME** cropping або встановити `use_full_curve=True`
+
+2. **Log-space transform:**
+   - `NormalizedXRDDataset(X, Y, log_space=True, train=False)`
+   - **CRITICAL:** `log_space=True` для моделі v3 (навчалася з log-space)
+
+### Model Performance (на 10k dataset)
+
+**v3 Results (10k samples, 100 epochs):**
+
+- Final train loss: 0.0126
+- Final val loss: 0.0191
+- **Best val loss: 0.0191 на epoch 47**
+- Overfitting gap: ~50% (acceptable)
+
+**v2 Baseline (100k samples):**
+
+- Val loss: 0.0130
+- Rp2 error: 12.36%
+- L2 error: 5.86%
+
+**Висновки:**
+
+- v3 на 10k гірший за v2 на 100k (0.0191 vs 0.0130)
+- Best epoch: 47/100 → після цього стагнація
+- Потрібно більше даних (100k) або early stopping
+
+### Common Bugs & Fixes
+
+#### Bug 3: Dataset Uniformity
+
+**Проблема:** Chi-square test показує non-uniform distribution після 7D sampling.
+
+**Причина:** Nested constraints створюють bins різного розміру.
+
+**Status:** Прийнятно - imbalance 4.26x краще за попередні >100x.
+
+### Files Overview
+
+**Training:**
+
+- `model_train.py` - unified training script (weighted/unweighted, full/cropped)
+- `model_common.py` - model architecture, dataset, utilities
+
+**Dataset Generation:**
+
+- `dataset_stratified_7d.py` - 7D stratified sampling with physical constraints
+- `xrd.py` - XRD curve generation (physics)
+
+**Evaluation:**
+
+- `model_evaluate.py` - evaluate model on dataset, show MAE metrics
+- `j_show_experiment.ipynb` - visualize predictions vs true curves
+- `j_analyze_dataset.ipynb` - dataset quality analysis
+
+**Documentation and Claude tests:**
+
+Create md file in contect/ directory and test files in tests/ directory

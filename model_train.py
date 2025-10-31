@@ -111,7 +111,8 @@ def train(
     print(f"   Output dim: {len(PARAM_NAMES)}")
 
     # Check if weighted or unweighted
-    is_weighted = not torch.allclose(loss_weights, torch.ones_like(loss_weights))
+    is_weighted = not torch.allclose(
+        loss_weights, torch.ones_like(loss_weights))
 
     print(f"\n⚖️  Loss Configuration:")
     if is_weighted:
@@ -262,6 +263,10 @@ if __name__ == "__main__":
     FULL_CURVE_TRAINING = False
     # FULL_CURVE_TRAINING = True  # Enable for full curve training
 
+    # Log-space transformation: Apply log10 to curves before normalization
+    USE_LOG_SPACE = True  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
+    # USE_LOG_SPACE = False  # Linear space (not recommended for XRD curves)
+
     # =============================================================================
     # LOSS WEIGHTS
     # =============================================================================
@@ -305,7 +310,6 @@ if __name__ == "__main__":
     MAX_VAL_SAMPLES = None  # No cap - use percentage-based split
     # MAX_VAL_SAMPLES = 50000  # Optional: cap at 50k if dataset is huge
 
-    USE_LOG_SPACE = True  # Apply log10 to curves (critical for XRD!)
     SEED = 1234
 
     # =============================================================================
@@ -319,6 +323,7 @@ if __name__ == "__main__":
     print(f"Model: {MODEL_PATH}")
     print(f"Weighted loss: {WEIGHTED_TRAINING}")
     print(f"Full curve: {FULL_CURVE_TRAINING}")
+    print(f"Log-space: {USE_LOG_SPACE}")
     print(f"Loss weights: {LOSS_WEIGHTS.tolist()}")
     print(f"{'='*70}\n")
 

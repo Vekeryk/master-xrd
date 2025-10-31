@@ -9,7 +9,7 @@ import numpy as np
 import pickle
 from pathlib import Path
 import matplotlib.pyplot as plt
-import xrd
+import xrd_deprecated
 
 
 def verify_peak_positions(dataset_path, n_samples=1000):
@@ -48,7 +48,7 @@ def verify_peak_positions(dataset_path, n_samples=1000):
 
     for i in range(n_check):
         # Generate full curve (before truncation)
-        curve, _ = xrd.compute_curve_and_profile(
+        curve, _ = xrd_deprecated.compute_curve_and_profile(
             array=X[i],
             dl=dl,
             m1=700,
@@ -91,7 +91,8 @@ def verify_peak_positions(dataset_path, n_samples=1000):
     print("Assessment:")
     print(f"  Current start_ML: {current_start_ML}")
     print(f"  Mean peak position: {mean_peak:.1f}")
-    print(f"  Distance from start_ML: {abs(mean_peak - current_start_ML):.1f} points")
+    print(
+        f"  Distance from start_ML: {abs(mean_peak - current_start_ML):.1f} points")
     print()
 
     if std_peak < 2:
@@ -112,7 +113,8 @@ def verify_peak_positions(dataset_path, n_samples=1000):
 
     if abs(mean_peak - current_start_ML) > 10:
         print("🔴 CRITICAL: Mean peak position differs from start_ML by >10 points!")
-        print(f"   → Should use start_ML={int(mean_peak)} instead of {current_start_ML}")
+        print(
+            f"   → Should use start_ML={int(mean_peak)} instead of {current_start_ML}")
     elif abs(mean_peak - current_start_ML) > 5:
         print("⚠️  WARNING: Mean peak differs from start_ML by >5 points")
         print(f"   → Consider adjusting start_ML to {int(mean_peak)}")
@@ -172,7 +174,7 @@ def verify_peak_positions(dataset_path, n_samples=1000):
     fig, axes = plt.subplots(3, 1, figsize=(12, 9))
 
     for i in range(min(3, n_check)):
-        curve, _ = xrd.compute_curve_and_profile(
+        curve, _ = xrd_deprecated.compute_curve_and_profile(
             array=X[i],
             dl=dl,
             m1=700,

@@ -32,6 +32,19 @@ FULL_CURVE_TRAINING = True   # Full: Y[:, 0:701] (701 points)
 **Cropped:** Фокус на peak region, швидше
 **Full:** Більше контексту, повільніше
 
+### 3. `USE_LOG_SPACE` (True/False)
+
+Контролює, чи застосовувати log10 перетворення до кривих перед нормалізацією.
+
+```python
+USE_LOG_SPACE = True   # Log10 transform (RECOMMENDED for XRD!)
+USE_LOG_SPACE = False  # Linear space
+```
+
+**⚠️ CRITICAL:** Модель v3 навчалася з `log_space=True`!
+**Log-space:** Підкреслює деталі в low-intensity regions (peaks, oscillations)
+**Linear:** Використовує raw intensity values (не рекомендовано для XRD)
+
 ## Model Naming Convention
 
 Автоматично генерується на основі прапорців:

@@ -20,7 +20,7 @@ Output files will have '_stratified' postfix:
 
 import numpy as np
 import torch
-import xrd_parallel as xrd
+import xrd
 from helpers import get_device
 from importlib import reload
 import pickle
@@ -111,16 +111,23 @@ def build_valid_combinations_dict():
     # Steps визначають густоту сітки, min/max беруться з MODEL_RANGES
 
     # Генерувати гріди з MODEL_RANGES та GRID_STEPS
-    Dmax1_grid = arange_inclusive(MODEL_RANGES['Dmax1'][0], MODEL_RANGES['Dmax1'][1], GRID_STEPS['Dmax1'])
-    D01_grid = arange_inclusive(MODEL_RANGES['D01'][0], MODEL_RANGES['D01'][1], GRID_STEPS['D01'])
+    Dmax1_grid = arange_inclusive(
+        MODEL_RANGES['Dmax1'][0], MODEL_RANGES['Dmax1'][1], GRID_STEPS['Dmax1'])
+    D01_grid = arange_inclusive(
+        MODEL_RANGES['D01'][0], MODEL_RANGES['D01'][1], GRID_STEPS['D01'])
 
     # L1, Rp1, L2, Rp2 в model_common.py в см → конвертувати в Å
-    L1_grid = arange_inclusive(MODEL_RANGES['L1'][0] * 1e8, MODEL_RANGES['L1'][1] * 1e8, GRID_STEPS['L1'])
-    Rp1_grid = arange_inclusive(MODEL_RANGES['Rp1'][0] * 1e8, MODEL_RANGES['Rp1'][1] * 1e8, GRID_STEPS['Rp1'])
+    L1_grid = arange_inclusive(
+        MODEL_RANGES['L1'][0] * 1e8, MODEL_RANGES['L1'][1] * 1e8, GRID_STEPS['L1'])
+    Rp1_grid = arange_inclusive(
+        MODEL_RANGES['Rp1'][0] * 1e8, MODEL_RANGES['Rp1'][1] * 1e8, GRID_STEPS['Rp1'])
 
-    D02_grid = arange_inclusive(MODEL_RANGES['D02'][0], MODEL_RANGES['D02'][1], GRID_STEPS['D02'])
-    L2_grid = arange_inclusive(MODEL_RANGES['L2'][0] * 1e8, MODEL_RANGES['L2'][1] * 1e8, GRID_STEPS['L2'])
-    Rp2_grid = arange_inclusive(MODEL_RANGES['Rp2'][0] * 1e8, MODEL_RANGES['Rp2'][1] * 1e8, GRID_STEPS['Rp2'])
+    D02_grid = arange_inclusive(
+        MODEL_RANGES['D02'][0], MODEL_RANGES['D02'][1], GRID_STEPS['D02'])
+    L2_grid = arange_inclusive(
+        MODEL_RANGES['L2'][0] * 1e8, MODEL_RANGES['L2'][1] * 1e8, GRID_STEPS['L2'])
+    Rp2_grid = arange_inclusive(
+        MODEL_RANGES['Rp2'][0] * 1e8, MODEL_RANGES['Rp2'][1] * 1e8, GRID_STEPS['Rp2'])
 
     limit = 0.03  # constraint for D01 + D02
 

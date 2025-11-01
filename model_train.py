@@ -44,7 +44,10 @@ def train(
     use_log_space,
     use_full_curve,
     loss_weights,
-    seed
+    seed,
+    augmented_sampling=False,
+    augmentation_factor=2,
+    focus_params=[5, 6]  # L2, Rp2
 ):
     """
     Main training loop.
@@ -88,14 +91,55 @@ def train(
     n_val = max(1, min(n_val, n - 1))
 
     tr_idx, va_idx = idx[n_val:], idx[:n_val]
-    print(f"\n📊 Data split:")
+    print(f"\n📊 Data split (before augmentation):")
     print(f"   Train: {len(tr_idx)} samples ({100 * len(tr_idx) / n:.1f}%)")
     print(f"   Val:   {len(va_idx)} samples ({100 * len(va_idx) / n:.1f}%)")
 
+    # Get train/val splits
+    X_train, Y_train = X[tr_idx], Y[tr_idx]
+    X_val, Y_val = X[va_idx], Y[va_idx]
+
+    # Augmented Sampling: ONLY augment training set (keep validation original)
+    if augmented_sampling:
+        print(f"\n🔬 Augmented Sampling:")
+        print(f"   Focus params: {[PARAM_NAMES[i] for i in focus_params]}")
+        print(f"   Augmentation factor: {augmentation_factor}x")
+
+        # Find edge samples in TRAINING set
+        from model_common import RANGES
+        edge_mask = torch.zeros(len(X_train), dtype=torch.bool)
+
+        for param_idx in focus_params:
+            param_values = X_train[:, param_idx]
+            param_range = RANGES[PARAM_NAMES[param_idx]]
+
+            threshold_low = param_range[0] + 0.2 * \
+                (param_range[1] - param_range[0])
+            threshold_high = param_range[1] - \
+                0.2 * (param_range[1] - param_range[0])
+
+            edge_mask |= (param_values < threshold_low) | (
+                param_values > threshold_high)
+
+        edge_indices = torch.where(edge_mask)[0]
+        print(
+            f"   Edge samples found: {len(edge_indices)} ({100*len(edge_indices)/len(X_train):.1f}%)")
+
+        # Duplicate edge samples
+        X_train_augmented = torch.cat(
+            [X_train] + [X_train[edge_indices]] * (augmentation_factor - 1))
+        Y_train_augmented = torch.cat(
+            [Y_train] + [Y_train[edge_indices]] * (augmentation_factor - 1))
+
+        print(
+            f"   Augmented train set: {len(X_train_augmented)} samples (+{len(X_train_augmented) - len(X_train)})")
+
+        X_train, Y_train = X_train_augmented, Y_train_augmented
+
     # Create datasets
-    ds_tr = NormalizedXRDDataset(X[tr_idx], Y[tr_idx],
+    ds_tr = NormalizedXRDDataset(X_train, Y_train,
                                  log_space=use_log_space, train=True)
-    ds_va = NormalizedXRDDataset(X[va_idx], Y[va_idx],
+    ds_va = NormalizedXRDDataset(X_val, Y_val,
                                  log_space=use_log_space, train=False)
 
     # Create dataloaders
@@ -257,15 +301,21 @@ if __name__ == "__main__":
 
     # Weighted loss: Use parameter-specific weights vs equal weights
     # WEIGHTED_TRAINING = False  # Unweighted baseline
-    WEIGHTED_TRAINING = True
+    WEIGHTED_TRAINING = False
 
     # Full curve training (no cropping)
     # FULL_CURVE_TRAINING = True # Enable for full curve training
-    FULL_CURVE_TRAINING = False
+    FULL_CURVE_TRAINING = True
 
     # Log-space transformation: Apply log10 to curves before normalization
     USE_LOG_SPACE = True  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
     # USE_LOG_SPACE = False  # Linear space (not recommended for XRD curves)
+
+    # Augmented Sampling: Duplicate edge samples for better coverage of sensitive regions
+    # ⚠️ IMPORTANT: Split happens BEFORE augmentation (validation remains clean)
+    AUGMENTED_SAMPLING = True  # Set True to enable
+    AUGMENTATION_FACTOR = 2     # How many times to duplicate edge samples
+    FOCUS_PARAMS = [5, 6]       # L2, Rp2 (most sensitive parameters)
 
     # =============================================================================
     # LOSS WEIGHTS
@@ -285,19 +335,22 @@ if __name__ == "__main__":
 
     # Dataset selection
     # DATA_PATH = "datasets/dataset_1000_dl100_7d.pkl"   # For debugging
-    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
+    DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
     # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"  # For mid
 
-    DATASET_NAME = DATA_PATH.split('/')[-1].replace('.pkl', '')
+    DATASET_NAME = DATA_PATH.split(
+        '/')[-1].replace('.pkl', '').replace('_7d', '')
 
     # Build model path with suffixes based on training mode
-    model_suffix = "v3"
+    model_suffix = ""
     if not WEIGHTED_TRAINING:
         model_suffix += "_unweighted"
     if FULL_CURVE_TRAINING:
         model_suffix += "_full"
+    if AUGMENTED_SAMPLING:
+        model_suffix += "_augmented"
 
-    MODEL_PATH = f"checkpoints/{DATASET_NAME}_{model_suffix}.pt"
+    MODEL_PATH = f"checkpoints/{DATASET_NAME}{model_suffix}.pt"
 
     # Training hyperparameters
     EPOCHS = 100  # Full training for larger model
@@ -324,6 +377,10 @@ if __name__ == "__main__":
     print(f"Weighted loss: {WEIGHTED_TRAINING}")
     print(f"Full curve: {FULL_CURVE_TRAINING}")
     print(f"Log-space: {USE_LOG_SPACE}")
+    print(f"Augmented sampling: {AUGMENTED_SAMPLING}")
+    if AUGMENTED_SAMPLING:
+        print(f"   Factor: {AUGMENTATION_FACTOR}x")
+        print(f"   Focus params: {[PARAM_NAMES[i] for i in FOCUS_PARAMS]}")
     print(f"Loss weights: {LOSS_WEIGHTS.tolist()}")
     print(f"{'='*70}\n")
 
@@ -339,5 +396,8 @@ if __name__ == "__main__":
         use_log_space=USE_LOG_SPACE,
         use_full_curve=FULL_CURVE_TRAINING,
         loss_weights=LOSS_WEIGHTS,
-        seed=SEED
+        seed=SEED,
+        augmented_sampling=AUGMENTED_SAMPLING,
+        augmentation_factor=AUGMENTATION_FACTOR,
+        focus_params=FOCUS_PARAMS
     )

@@ -177,9 +177,9 @@ if __name__ == "__main__":
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_full.pt"
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_unweighted_full.pt"
 
-    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
+    DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_full.pt"
-    MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3.pt"
+    MODEL_PATH = f"checkpoints/dataset_200000_dl100_unweighted_full_augmented.pt"
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
 
     # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl" # For mid
@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
     BATCH_SIZE = 256
     USE_LOG_SPACE = True  # Must match training setting
-    USE_FULL_CURVE = False  # Must match training setting
+    USE_FULL_CURVE = True  # Must match training setting
 
     SHOW_EXAMPLES = 10  # Number of random examples to display (0 to disable)
 

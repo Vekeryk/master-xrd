@@ -47,7 +47,8 @@ def train(
     seed,
     augmented_sampling=False,
     augmentation_factor=2,
-    focus_params=[5, 6]  # L2, Rp2
+    focus_params=[5, 6],  # L2, Rp2
+    load_checkpoint_path=None  # NEW: Path to pre-trained model for fine-tuning
 ):
     """
     Main training loop.
@@ -65,6 +66,10 @@ def train(
         use_full_curve: If True, use full curve without cropping
         loss_weights: Tensor of weights for each parameter [7]
         seed: Random seed for reproducibility
+        augmented_sampling: If True, duplicate edge samples for better coverage
+        augmentation_factor: How many times to duplicate edge samples
+        focus_params: List of parameter indices to focus on for augmented sampling
+        load_checkpoint_path: Path to pre-trained model checkpoint for fine-tuning
     """
     print("=" * 70)
     print("XRD CNN TRAINING")
@@ -150,6 +155,17 @@ def train(
 
     # Create model
     model = XRDRegressor().to(device)
+
+    # Load pre-trained checkpoint if fine-tuning
+    if load_checkpoint_path is not None:
+        print(f"\n🔄 Fine-tuning mode: Loading pre-trained model")
+        print(f"   Checkpoint: {load_checkpoint_path}")
+        checkpoint = torch.load(load_checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model'])
+        print(f"   ✅ Loaded model from epoch {checkpoint.get('epoch', 'N/A')}")
+        print(
+            f"   ✅ Pre-trained val_loss: {checkpoint.get('val_loss', 'N/A'):.5f}")
+
     print(f"\n🧠 Model: XRDRegressor")
     print(f"   Parameters to predict: {PARAM_NAMES}")
     print(f"   Output dim: {len(PARAM_NAMES)}")
@@ -299,6 +315,13 @@ if __name__ == "__main__":
     # TRAINING MODE FLAGS
     # =============================================================================
 
+    # Fine-tuning: Load pre-trained model and continue training on targeted dataset
+    # FINE_TUNING = False  # Set True to enable fine-tuning
+    FINE_TUNING = True  # Uncomment to enable fine-tuning
+
+    # Pre-trained model path (only used if FINE_TUNING=True)
+    PRETRAINED_MODEL_PATH = "checkpoints/dataset_200000_dl100_unweighted_full_augmented.pt"
+
     # Weighted loss: Use parameter-specific weights vs equal weights
     # WEIGHTED_TRAINING = False  # Unweighted baseline
     WEIGHTED_TRAINING = False
@@ -325,6 +348,7 @@ if __name__ == "__main__":
     if WEIGHTED_TRAINING:
         # Higher weights for challenging parameters (L2, Rp2)
         LOSS_WEIGHTS = torch.tensor([1.0, 1.2, 1.0, 1.0, 1.5, 2.0, 2.5])
+        AUGMENTED_SAMPLING = False
     else:
         # Unweighted: all parameters equal importance
         LOSS_WEIGHTS = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
@@ -334,12 +358,17 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset selection
-    # DATA_PATH = "datasets/dataset_1000_dl100_7d.pkl"   # For debugging
-    DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
-    # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"  # For mid
-
-    DATASET_NAME = DATA_PATH.split(
-        '/')[-1].replace('.pkl', '').replace('_7d', '')
+    if FINE_TUNING:
+        # Use targeted dataset for fine-tuning
+        DATA_PATH = "datasets/dataset_10000_dl100_targeted_std15.0.pkl"
+        DATASET_NAME = PRETRAINED_MODEL_PATH.split('/')[-1].split('_dl100')[0]
+    else:
+        # Use general dataset for training from scratch
+        # DATA_PATH = "datasets/dataset_1000_dl100_7d.pkl"   # For debugging
+        DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
+        # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"  # For mid
+        DATASET_NAME = DATA_PATH.split(
+            '/')[-1].replace('.pkl', '').replace('_7d', '').replace('_targeted_std15.0', '')
 
     # Build model path with suffixes based on training mode
     model_suffix = ""
@@ -349,14 +378,23 @@ if __name__ == "__main__":
         model_suffix += "_full"
     if AUGMENTED_SAMPLING:
         model_suffix += "_augmented"
+    if FINE_TUNING:
+        model_suffix += "_finetuned"
 
     MODEL_PATH = f"checkpoints/{DATASET_NAME}{model_suffix}.pt"
 
     # Training hyperparameters
-    EPOCHS = 100  # Full training for larger model
-    # EPOCHS = 20  # Quick test of v3 architecture
+    if FINE_TUNING:
+        # Fine-tuning: fewer epochs, lower learning rate
+        EPOCHS = 50
+        LEARNING_RATE = 1e-4  # 10× lower than normal training
+    else:
+        # Normal training from scratch
+        EPOCHS = 100  # Full training for larger model
+        # EPOCHS = 20  # Quick test of v3 architecture
+        LEARNING_RATE = 0.0015  # 0.0015
+
     BATCH_SIZE = 256  # 128/256/512
-    LEARNING_RATE = 0.0015  # 0.0015
     WEIGHT_DECAY = 5e-4
 
     VAL_SPLIT = 0.05  # 5% validation (50k samples for 1M dataset)
@@ -372,6 +410,9 @@ if __name__ == "__main__":
     print(f"\n{'='*70}")
     print(f"TRAINING CONFIGURATION SUMMARY")
     print(f"{'='*70}")
+    print(f"Fine-tuning: {FINE_TUNING}")
+    if FINE_TUNING:
+        print(f"   Pre-trained model: {PRETRAINED_MODEL_PATH}")
     print(f"Dataset: {DATA_PATH}")
     print(f"Model: {MODEL_PATH}")
     print(f"Weighted loss: {WEIGHTED_TRAINING}")
@@ -382,6 +423,8 @@ if __name__ == "__main__":
         print(f"   Factor: {AUGMENTATION_FACTOR}x")
         print(f"   Focus params: {[PARAM_NAMES[i] for i in FOCUS_PARAMS]}")
     print(f"Loss weights: {LOSS_WEIGHTS.tolist()}")
+    print(f"Learning rate: {LEARNING_RATE}")
+    print(f"Epochs: {EPOCHS}")
     print(f"{'='*70}\n")
 
     train(
@@ -399,5 +442,6 @@ if __name__ == "__main__":
         seed=SEED,
         augmented_sampling=AUGMENTED_SAMPLING,
         augmentation_factor=AUGMENTATION_FACTOR,
-        focus_params=FOCUS_PARAMS
+        focus_params=FOCUS_PARAMS,
+        load_checkpoint_path=PRETRAINED_MODEL_PATH if FINE_TUNING else None
     )

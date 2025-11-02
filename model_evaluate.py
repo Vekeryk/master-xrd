@@ -25,6 +25,7 @@ from model_common import (
     PARAM_NAMES,
     RANGES
 )
+import model_common
 
 
 # =============================================================================
@@ -54,7 +55,13 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples, us
     # Load model
     print(f"\n📦 Loading model from: {model_path}")
     ckpt = torch.load(model_path, map_location=device, weights_only=False)
-    model = XRDRegressor().to(device)
+
+    # model = XRDRegressor().to(device)
+
+    model = model_common.XRDRegressor()
+    model = torch.nn.DataParallel(model)
+    model.to(device)
+
     model.load_state_dict(ckpt["model"])
     model.eval()
 
@@ -179,7 +186,7 @@ if __name__ == "__main__":
 
     DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_full.pt"
-    MODEL_PATH = f"checkpoints/dataset_200000_dl100_unweighted_full_augmented.pt"
+    MODEL_PATH = f"kaggle_output/checkpoints/dataset_200000_dl100_unweighted_full.pt"
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
 
     # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl" # For mid

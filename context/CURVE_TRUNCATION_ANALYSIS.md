@@ -1,9 +1,11 @@
 # XRD Curve Truncation Analysis - CRITICAL FINDINGS
 
 ## Date
+
 2025-10-29
 
 ## Question
+
 Is the curve truncation logic (`start_ML=50`) correct for ML training?
 
 ```python
@@ -18,10 +20,12 @@ curve_Y_ML = np.asarray(R_convolved)[start_ML:m1]  # [50:700]
 ### What Gets Truncated?
 
 The XRD rocking curve for GGG + YIG film consists of:
+
 1. **Main Bragg peak (points 0-50):** High-intensity peak from substrate/film interface
 2. **Interference fringes (points 50-700):** Oscillations encoding deformation profile
 
 **Truncation rationale:**
+
 - The first 50 points (main peak) primarily reflect the perfect crystal structure
 - The tail (interference fringes) contains information about **deformation parameters** in the defected layer
 - For **parameter estimation**, the fringes are more informative than the peak position
@@ -29,14 +33,17 @@ The XRD rocking curve for GGG + YIG film consists of:
 ### Physical Justification
 
 From your thesis goal:
+
 > "Визначення параметрів тонких плівок (товщина шару, шорсткість межі, густина тощо) з експериментальних кривих дифракції (XRD)"
 
 The deformation profile parameters (Dmax1, D01, L1, Rp1, D02, L2, Rp2) primarily affect:
+
 - ✅ **Interference fringe spacing** → encodes L1, L2 (layer thickness)
 - ✅ **Fringe intensity modulation** → encodes Dmax1, D01, D02 (deformation magnitude)
 - ✅ **Fringe asymmetry** → encodes Rp1, Rp2 (position of maximum deformation)
 
 The main peak position encodes:
+
 - ❌ **Lattice parameter** (not a fitted parameter in your model)
 - ❌ **Bragg angle** (fixed by crystal structure)
 
@@ -49,12 +56,14 @@ The main peak position encodes:
 ### The Issue
 
 **Training data** ([xrd.py:784](xrd.py#L784)):
+
 ```python
 start_ML: int = 50  # Hardcoded default
 curve_Y_ML = R_convolved[50:700]  # 650 points
 ```
 
 **Experimental data** ([j_analyze_experiment.ipynb](j_analyze_experiment.ipynb)):
+
 ```python
 exp_data_processed = preprocess_for_model(exp_data, start_ML=90, target_length=650)
                                                     # ^^^ DIFFERENT!
@@ -64,12 +73,13 @@ exp_data_processed = preprocess_for_model(exp_data, start_ML=90, target_length=6
 
 This is a **domain shift** problem:
 
-| Data Type | start_ML | What Gets Saved | Alignment |
-|-----------|----------|-----------------|-----------|
-| Training (synthetic) | 50 | Points 50-700 | Peak starts ~index 0 of saved curve |
-| Experimental | 90 | Points 90-360 | Peak starts ~index -40 (missing!) |
+| Data Type            | start_ML | What Gets Saved | Alignment                           |
+| -------------------- | -------- | --------------- | ----------------------------------- |
+| Training (synthetic) | 50       | Points 50-700   | Peak starts ~index 0 of saved curve |
+| Experimental         | 90       | Points 90-360   | Peak starts ~index -40 (missing!)   |
 
 **Result:**
+
 - Model learns: "Parameter L2 causes oscillations starting at index X"
 - Experimental data: "Oscillations start at index X-40"
 - **Model predictions will be systematically wrong!**
@@ -77,6 +87,7 @@ This is a **domain shift** problem:
 ### Evidence
 
 From j_analyze_experiment.ipynb output:
+
 ```
 Peak position: index 90 (in experimental data)
 Truncation point (start_ML): 50
@@ -94,11 +105,14 @@ But training uses start_ML=50, meaning if the synthetic curves also have peaks a
 **Assumption:** All curves (synthetic and experimental) have the main peak at approximately the same index.
 
 **Risk:**
+
 1. **Different deformation profiles might shift peak position slightly**
+
    - Large L1 → peak might shift due to thickness effects
    - Large Dmax1 → peak broadening might change effective "start of tail"
 
 2. **Experimental data has different angular sampling**
+
    - Synthetic: m1=700 points over specific angular range
    - Experimental: Variable number of points (360 in notebook example)
    - **Same index ≠ same angular position!**
@@ -138,6 +152,7 @@ def find_peak_and_truncate(curve, tail_fraction=0.9):
 ```
 
 This ensures:
+
 - ✅ Consistent alignment (always starts at same relative position after peak)
 - ✅ Works for different experimental setups
 - ✅ Robust to peak shifts
@@ -151,14 +166,17 @@ This ensures:
 By truncating points 0-50, you're discarding:
 
 1. **Peak position** (angular alignment)
+
    - Could be useful for detecting systematic errors
    - Could help model understand absolute angular scale
 
 2. **Peak intensity**
+
    - Related to film quality/coherence
    - Could correlate with deformation parameters
 
 3. **Peak width (FWHM)**
+
    - Encodes mosaic spread, defect density
    - **Directly relevant to your defected layer analysis!**
 
@@ -169,18 +187,21 @@ By truncating points 0-50, you're discarding:
 ### Question: Should You Keep the Peak?
 
 **Arguments FOR truncation:**
+
 - Peak dominates intensity (6 orders of magnitude difference)
 - Log-normalization already handles this, but truncation is simpler
 - Reduces input dimensionality (less overfitting risk)
 - Literature precedent (Ziegler et al. also truncate?)
 
 **Arguments AGAINST truncation:**
+
 - Peak shape encodes defect information
 - Modern CNNs with log-normalization can handle full curve
 - No need to manually engineer features when using deep learning
 - More data = potentially better performance
 
 **My recommendation:**
+
 - **Short-term:** Keep truncation BUT FIX the alignment issues (see Solutions below)
 - **Long-term:** Try training on full curves with log-normalization as an experiment
   - If it works better → validates that peak contains useful information
@@ -193,12 +214,14 @@ By truncating points 0-50, you're discarding:
 ### Solution 1: Fix Training/Experimental Mismatch (URGENT)
 
 **Option A: Make experimental match training**
+
 ```python
 # In j_analyze_experiment.ipynb
 exp_data_processed = preprocess_for_model(exp_data, start_ML=50, ...)  # NOT 90!
 ```
 
 **Option B: Make training match experimental**
+
 ```python
 # In xrd.py
 def compute_curve_and_profile(..., start_ML: int = 90):  # NOT 50!
@@ -261,7 +284,7 @@ def compute_curve_and_profile(
     dl: float = 100e-8,
     m1: int = 700,
     m10: int = 20,
-    ik: float = 4.671897861,
+    ik: float = 4.018235972,
     start_ML: int = None,  # None = auto-detect
     tail_threshold: float = 0.1,  # Start tail at 10% of peak
     params_obj: DeformationProfile = None
@@ -321,11 +344,13 @@ def compute_curve_and_profile(..., use_full_curve: bool = False):
 ```
 
 Advantages:
+
 - No information loss
 - No alignment issues
 - Peak shape features available to model
 
 Disadvantages:
+
 - Larger input (700 vs 650 points)
 - Potential for peak intensity to dominate (but log-normalization helps)
 
@@ -338,6 +363,7 @@ Disadvantages:
 ### 🔴 URGENT (Do Immediately)
 
 1. **Fix training/experimental mismatch**
+
    - Verify what start_ML your experimental data actually needs
    - Make sure training uses the same value
    - **Current mismatch (50 vs 90) will cause systematic errors!**
@@ -350,6 +376,7 @@ Disadvantages:
 ### 🟡 IMPORTANT (Do Before Final Thesis Experiments)
 
 3. **Implement adaptive truncation**
+
    - Makes method robust
    - Better for thesis: "We use adaptive truncation to handle varying experimental conditions"
    - Publishable improvement
@@ -362,6 +389,7 @@ Disadvantages:
 ### 🟢 OPTIONAL (For Extended Research)
 
 5. **Experiment with full curve training**
+
    - Quick experiment: train v3 on full 700-point curves
    - Compare with truncated results
    - If better: major finding! "Contrary to assumptions, peak shape contains deformation information"
@@ -377,13 +405,13 @@ Disadvantages:
 
 ## Current Status Assessment
 
-| Aspect | Status | Risk Level | Action Required |
-|--------|--------|------------|-----------------|
-| Training uses start_ML=50 | ✅ Implemented | 🟢 Low | None |
-| Experimental uses start_ML=90 | ⚠️  Mismatch | 🔴 **CRITICAL** | **Fix immediately** |
-| Peak positions verified | ❌ Unknown | 🟡 Medium | Run diagnostics |
-| Truncation documented | ❌ No | 🟡 Medium | Add to thesis |
-| Adaptive truncation | ❌ No | 🟡 Medium | Consider implementing |
+| Aspect                        | Status         | Risk Level      | Action Required       |
+| ----------------------------- | -------------- | --------------- | --------------------- |
+| Training uses start_ML=50     | ✅ Implemented | 🟢 Low          | None                  |
+| Experimental uses start_ML=90 | ⚠️ Mismatch    | 🔴 **CRITICAL** | **Fix immediately**   |
+| Peak positions verified       | ❌ Unknown     | 🟡 Medium       | Run diagnostics       |
+| Truncation documented         | ❌ No          | 🟡 Medium       | Add to thesis         |
+| Adaptive truncation           | ❌ No          | 🟡 Medium       | Consider implementing |
 
 ---
 
@@ -393,7 +421,8 @@ Disadvantages:
 
 **Physically:** ✅ YES - Truncating the peak to focus on fringes is **correct** for deformation parameter estimation.
 
-**Implementationally:** ⚠️  **PARTIALLY** - The concept is sound, but there are **critical bugs**:
+**Implementationally:** ⚠️ **PARTIALLY** - The concept is sound, but there are **critical bugs**:
+
 1. 🔴 Training/experimental mismatch (50 vs 90)
 2. 🟡 No verification of peak positions
 3. 🟡 Fixed truncation fragile to experimental variations
@@ -401,14 +430,17 @@ Disadvantages:
 **Should you change it?**
 
 **Minimum fix (required for correctness):**
+
 - ✅ Fix start_ML mismatch (make both use same value after verification)
 - ✅ Verify peak positions in your dataset
 
 **Recommended improvements:**
+
 - ✅ Implement adaptive truncation
 - ✅ Document in thesis methodology section
 
 **Optional research:**
+
 - 🤔 Try full-curve training as comparison experiment
 
 **Bottom line:** The current approach is conceptually sound but has implementation bugs that MUST be fixed before final results. The training/experimental mismatch is particularly critical and likely degrading your model's performance on real data.

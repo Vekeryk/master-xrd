@@ -709,7 +709,7 @@ class HRXRDSimulator:
         deformation_params: DeformationProfile,
         m1: int = 700,
         m10: int = 20,
-        ik: float = 4.671897861
+        ik: float = 4.018235972
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Повна симуляція кривої дифракційного відбивання
@@ -780,7 +780,7 @@ def compute_curve_and_profile(array=None,
                               dl: float = 100e-8,
                               m1: int = 700,
                               m10: int = 20,
-                              ik: float = 4.671897861,
+                              ik: float = 4.018235972,
                               start_ML: int = 50,
                               params_obj: DeformationProfile = None):
     if array is None and params_obj is None:
@@ -888,7 +888,7 @@ if __name__ == "__main__":
         deformation,
         m1=700,
         m10=20,
-        ik=4.671897861
+        ik=4.018235972
     )
 
     print(f"Завершено! Точок: {len(DeltaTeta)}")

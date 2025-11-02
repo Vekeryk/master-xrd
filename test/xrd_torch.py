@@ -117,7 +117,7 @@ def compute_curve_torch(
     dl: float = 100e-8,
     m1: int = 700,
     m10: int = 20,
-    ik: float = 4.671897861,
+    ik: float = 4.018235972,
     device: Optional[torch.device] = None
 ) -> torch.Tensor:
     """
@@ -150,7 +150,9 @@ def compute_curve_torch(
     # Bragg angle
     tb = torch.arcsin(
         torch.tensor(
-            crystal.Lambda * np.sqrt(crystal.h**2 + crystal.k**2 + crystal.l**2) / (2 * crystal.a),
+            crystal.Lambda *
+            np.sqrt(crystal.h**2 + crystal.k**2 +
+                    crystal.l**2) / (2 * crystal.a),
             device=device
         )
     )
@@ -173,9 +175,11 @@ def compute_curve_torch(
     )
 
     # Complex susceptibilities (monocrystal)
-    xhp_sigma = torch.tensor(crystal.ReChiRH + 1j * crystal.ModChiIH_sigma, device=device)
+    xhp_sigma = torch.tensor(crystal.ReChiRH + 1j *
+                             crystal.ModChiIH_sigma, device=device)
     xhn_sigma = xhp_sigma
-    xhp_pi = torch.tensor(crystal.ReChiRH + 1j * crystal.ModChiIH_pi, device=device)
+    xhp_pi = torch.tensor(crystal.ReChiRH + 1j *
+                          crystal.ModChiIH_pi, device=device)
     xhn_pi = xhp_pi
 
     # Absorption
@@ -256,7 +260,8 @@ def compute_curve_torch(
         gaussian = gaussian / gaussian.sum()
 
         # Convolve
-        R_curve_padded = torch.nn.functional.pad(R_curve.unsqueeze(0).unsqueeze(0), (kernel_size//2, kernel_size//2), mode='reflect')
+        R_curve_padded = torch.nn.functional.pad(R_curve.unsqueeze(0).unsqueeze(
+            0), (kernel_size // 2, kernel_size // 2), mode='reflect')
         R_convolved = torch.nn.functional.conv1d(
             R_curve_padded,
             gaussian.view(1, 1, -1)
@@ -277,11 +282,12 @@ def test_torch_vs_numpy():
     import xrd
 
     # Test parameters
-    test_params = [0.008094, 0.000943, 5200e-8, 3500e-8, 0.00255, 3000e-8, -50e-8]
+    test_params = [0.008094, 0.000943, 5200e-8,
+                   3500e-8, 0.00255, 3000e-8, -50e-8]
 
-    print("="*80)
+    print("=" * 80)
     print("Testing PyTorch vs NumPy XRD Implementation")
-    print("="*80)
+    print("=" * 80)
 
     # NumPy original
     print("\n1. Running NumPy original...")
@@ -298,7 +304,8 @@ def test_torch_vs_numpy():
     Y_torch = curve_torch[50:701].detach().numpy()  # Cropped
 
     print(f"   PyTorch curve shape: {Y_torch.shape}")
-    print(f"   PyTorch curve range: [{Y_torch.min():.2e}, {Y_torch.max():.2e}]")
+    print(
+        f"   PyTorch curve range: [{Y_torch.min():.2e}, {Y_torch.max():.2e}]")
 
     # Compare
     print("\n3. Comparison:")

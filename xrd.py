@@ -715,7 +715,7 @@ class HRXRDSimulator:
         m1: int,
         m10: int,
         ik: float,
-        width: float = 25.0,
+        width: float = 30.0,
         amplitude: float = 10000.0
     ) -> np.ndarray:
         """
@@ -781,7 +781,7 @@ class HRXRDSimulator:
         deformation_params: DeformationProfile,
         m1: int = 700,
         m10: int = 20,
-        ik: float = 4.671897861
+        ik: float = 4.018235972
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Повна симуляція кривої дифракційного відбивання
@@ -853,7 +853,7 @@ def create_YIG_film(hpl: float = 3.15e-4) -> FilmParameters:
 def compute_curve_and_profile(array=None,
                               m1: int = 700,
                               m10: int = 20,
-                              ik: float = 4.671897861,
+                              ik: float = 4.018235972,
                               start_ML: int = 50,
                               params_obj: DeformationProfile = None,
                               verbose=False,
@@ -1065,11 +1065,11 @@ def benchmark_single_sample(dl=100e-8):
     t3 = time.time()
     print(f"   3. PolarizationInit: {(t3-t2)*1000:.2f}ms")
 
-    simulator.RozrachKogerTT(700, 20, 4.671897861)
+    simulator.RozrachKogerTT(700, 20, 4.018235972)
     t4 = time.time()
     print(f"   4. RozrachKogerTT (🔥 HOT PATH): {(t4-t3)*1000:.2f}ms")
 
-    simulator.Zgortka(700, 20, 4.671897861)
+    simulator.Zgortka(700, 20, 4.018235972)
     t5 = time.time()
     print(f"   5. Zgortka (convolution): {(t5-t4)*1000:.2f}ms")
 
@@ -1136,7 +1136,7 @@ if __name__ == "__main__":
             deformation,
             m1=700,
             m10=20,
-            ik=4.671897861
+            ik=4.018235972
         )
         elapsed = time.time() - start
 

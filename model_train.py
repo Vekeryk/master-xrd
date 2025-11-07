@@ -317,10 +317,10 @@ if __name__ == "__main__":
 
     # Fine-tuning: Load pre-trained model and continue training on targeted dataset
     # FINE_TUNING = False  # Set True to enable fine-tuning
-    FINE_TUNING = True  # Uncomment to enable fine-tuning
+    FINE_TUNING = False  # Uncomment to enable fine-tuning
 
     # Pre-trained model path (only used if FINE_TUNING=True)
-    PRETRAINED_MODEL_PATH = "checkpoints/dataset_200000_dl100_unweighted_full_augmented.pt"
+    PRETRAINED_MODEL_PATH = "checkpoints/dataset_10000_dl100.pt"
 
     # Weighted loss: Use parameter-specific weights vs equal weights
     # WEIGHTED_TRAINING = False  # Unweighted baseline
@@ -328,15 +328,15 @@ if __name__ == "__main__":
 
     # Full curve training (no cropping)
     # FULL_CURVE_TRAINING = True # Enable for full curve training
-    FULL_CURVE_TRAINING = True
+    FULL_CURVE_TRAINING = False
 
     # Log-space transformation: Apply log10 to curves before normalization
-    USE_LOG_SPACE = True  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
+    USE_LOG_SPACE = False  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
     # USE_LOG_SPACE = False  # Linear space (not recommended for XRD curves)
 
     # Augmented Sampling: Duplicate edge samples for better coverage of sensitive regions
     # ⚠️ IMPORTANT: Split happens BEFORE augmentation (validation remains clean)
-    AUGMENTED_SAMPLING = True  # Set True to enable
+    AUGMENTED_SAMPLING = False  # Set True to enable
     AUGMENTATION_FACTOR = 2     # How many times to duplicate edge samples
     FOCUS_PARAMS = [5, 6]       # L2, Rp2 (most sensitive parameters)
 
@@ -360,20 +360,20 @@ if __name__ == "__main__":
     # Dataset selection
     if FINE_TUNING:
         # Use targeted dataset for fine-tuning
-        DATA_PATH = "datasets/dataset_10000_dl100_targeted_std15.0.pkl"
+        DATA_PATH = "datasets/dataset_1000_dl100_targeted.pkl"
         DATASET_NAME = PRETRAINED_MODEL_PATH.split('/')[-1].split('_dl100')[0]
     else:
         # Use general dataset for training from scratch
-        # DATA_PATH = "datasets/dataset_1000_dl100_7d.pkl"   # For debugging
-        DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
+        DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"   # For debugging
+        # DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
         # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"  # For mid
         DATASET_NAME = DATA_PATH.split(
-            '/')[-1].replace('.pkl', '').replace('_7d', '').replace('_targeted_std15.0', '')
+            '/')[-1].replace('.pkl', '').replace('_7d', '').replace('_targeted', '')
 
     # Build model path with suffixes based on training mode
     model_suffix = ""
-    if not WEIGHTED_TRAINING:
-        model_suffix += "_unweighted"
+    if WEIGHTED_TRAINING:
+        model_suffix += "_weighted"
     if FULL_CURVE_TRAINING:
         model_suffix += "_full"
     if AUGMENTED_SAMPLING:

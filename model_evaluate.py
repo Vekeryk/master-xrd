@@ -56,13 +56,19 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples, us
     print(f"\n📦 Loading model from: {model_path}")
     ckpt = torch.load(model_path, map_location=device, weights_only=False)
 
-    # model = XRDRegressor().to(device)
+    model = XRDRegressor().to(device)
 
-    model = model_common.XRDRegressor()
-    model = torch.nn.DataParallel(model)
-    model.to(device)
+    # model = model_common.XRDRegressor()
+    # model = torch.nn.DataParallel(model)
+    # model.to(device)
 
-    model.load_state_dict(ckpt["model"])
+    # Remove hann_window from checkpoint if present (it's recreated dynamically in forward())
+    state_dict = ckpt["model"]
+    if "hann_window" in state_dict:
+        print("   Note: Removing hann_window from checkpoint (will be recreated dynamically)")
+        state_dict.pop("hann_window")
+
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
 
     if "epoch" in ckpt:
@@ -184,9 +190,9 @@ if __name__ == "__main__":
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_full.pt"
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_unweighted_full.pt"
 
-    DATA_PATH = "datasets/dataset_200000_dl100_7d.pkl"  # For quick testing
+    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_full.pt"
-    MODEL_PATH = f"kaggle_output/checkpoints/dataset_200000_dl100_unweighted_full.pt"
+    MODEL_PATH = f"checkpoints/dataset_10000_dl100.pt"
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
 
     # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl" # For mid
@@ -202,8 +208,8 @@ if __name__ == "__main__":
     # MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"  # Old baseline model (for comparison)
 
     BATCH_SIZE = 256
-    USE_LOG_SPACE = True  # Must match training setting
-    USE_FULL_CURVE = True  # Must match training setting
+    USE_LOG_SPACE = False  # Must match training setting
+    USE_FULL_CURVE = False  # Must match training setting
 
     SHOW_EXAMPLES = 10  # Number of random examples to display (0 to disable)
 

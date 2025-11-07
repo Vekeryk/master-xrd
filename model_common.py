@@ -106,7 +106,8 @@ def load_dataset(path: Path, use_full_curve: bool = False):
     # Auto-crop if crop_params available and not using full curve
     if not use_full_curve and "crop_params" in data:
         crop_info = data["crop_params"]
-        start_ML = crop_info.get("start_ML", 50)
+        # start_ML = crop_info.get("start_ML", 50)
+        start_ML = 40
         m1 = crop_info.get("m1", 700)
 
         print(f"✓ Applying crop_params: Y[:, {start_ML}:{m1}]")
@@ -189,25 +190,42 @@ def physics_constrained_loss(predictions, targets, loss_weights, base_loss_fn=No
     constraint_penalty = 0.0
 
     # Constraint 1: D01 ≤ Dmax1 (idx 1 ≤ idx 0)
-    # ReLU activates only when constraint is violated
-    constraint_penalty += F.relu(predictions[:, 1] - predictions[:, 0]).mean()
+    # CANNOT compare normalized directly - different ranges!
+    # Dmax1: [0.0010, 0.0310], D01: [0.0005, 0.0305]
+    # Must denormalize first
+    Dmax1_min, Dmax1_max = RANGES["Dmax1"]
+    D01_min, D01_max = RANGES["D01"]
+    Dmax1_phys = Dmax1_min + (Dmax1_max - Dmax1_min) * predictions[:, 0]
+    D01_phys = D01_min + (D01_max - D01_min) * predictions[:, 1]
+    constraint_penalty += F.relu(D01_phys - Dmax1_phys).mean()
 
     # Constraint 2: D01 + D02 ≤ 0.03
-    # Need to convert from normalized [0,1] to physical scale
-    # D01: [0.001, 0.030] normalized to [0,1]
-    # D02: [0.002, 0.030] normalized to [0,1]
-    D01_phys = 0.001 + (0.030 - 0.001) * predictions[:, 1]
-    D02_phys = 0.002 + (0.030 - 0.002) * predictions[:, 4]
-    # Higher weight
+    # Need to convert from normalized [0,1] to physical scale using RANGES
+    D01_min, D01_max = RANGES["D01"]
+    D02_min, D02_max = RANGES["D02"]
+    D01_phys = D01_min + (D01_max - D01_min) * predictions[:, 1]
+    D02_phys = D02_min + (D02_max - D02_min) * predictions[:, 4]
+    # Higher weight for critical constraint
     constraint_penalty += F.relu(D01_phys + D02_phys - 0.03).mean() * 10.0
 
     # Constraint 3: Rp1 ≤ L1 (idx 3 ≤ idx 2)
-    # Both normalized to same range [0, 7000e-8], so can compare directly
-    constraint_penalty += F.relu(predictions[:, 3] - predictions[:, 2]).mean()
+    # CANNOT compare normalized directly - different ranges!
+    # L1: [500e-8, 7000e-8], Rp1: [50e-8, 5050e-8]
+    # Must denormalize first
+    L1_min, L1_max = RANGES["L1"]
+    Rp1_min, Rp1_max = RANGES["Rp1"]
+    L1_phys = L1_min + (L1_max - L1_min) * predictions[:, 2]
+    Rp1_phys = Rp1_min + (Rp1_max - Rp1_min) * predictions[:, 3]
+    constraint_penalty += F.relu(Rp1_phys - L1_phys).mean()
 
     # Constraint 4: L2 ≤ L1 (idx 5 ≤ idx 2)
-    # Both normalized to same range [1000e-8, 7000e-8], so can compare directly
-    constraint_penalty += F.relu(predictions[:, 5] - predictions[:, 2]).mean()
+    # CANNOT compare normalized directly - different ranges!
+    # L1: [500e-8, 7000e-8], L2: [500e-8, 5000e-8]
+    # Must denormalize first
+    L2_min, L2_max = RANGES["L2"]
+    L2_phys = L2_min + (L2_max - L2_min) * predictions[:, 5]
+    # L1_phys already computed above
+    constraint_penalty += F.relu(L2_phys - L1_phys).mean()
 
     # Total loss: base + constraint penalty
     # Constraint weight 0.1 balances accuracy vs physical validity
@@ -259,7 +277,10 @@ class NormalizedXRDDataset(torch.utils.data.Dataset):
         # Yp = (Yp - Yp.amin(dim=1, keepdim=True)) / \
         #     (Yp.amax(dim=1, keepdim=True) - Yp.amin(dim=1, keepdim=True) + 1e-12)
 
-        self.Yn = Yp.unsqueeze(1)  # [N, 1, L] for Conv1d
+        # Store only intensity channel, add positional channel dynamically in __getitem__
+        # This ensures device compatibility (position created on same device as curve)
+        self.Yn = Yp.unsqueeze(1)  # [N, 1, L] intensity only
+        self.curve_length = Yp.shape[1]  # Store length for positional channel
 
         # Normalize targets to [0,1] using RANGES
         N, P = self.X.size(0), self.X.size(1)
@@ -279,8 +300,11 @@ class NormalizedXRDDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         """
         Returns:
-            Normalized curve [1, L]
+            Normalized curve (intensity only) [1, L]
             Normalized targets [P]
+
+        Note: Positional channel added in model forward() to avoid
+        creating torch.linspace for every sample (performance)
         """
         return self.Yn[idx], self.Tn[idx]
 
@@ -309,7 +333,7 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv1d(c, c, kernel_size=kernel_size,
                                padding=pad, dilation=dilation)
         self.bn2 = nn.BatchNorm1d(c)
-        self.act = nn.ReLU(inplace=True)
+        self.act = nn.SiLU(inplace=True)  # Smooth activation for better gradients
 
     def forward(self, x):
         h = self.act(self.bn1(self.conv1(x)))
@@ -332,7 +356,7 @@ class AttentionPool1d(nn.Module):
         # Learn attention weights from features
         self.attention = nn.Sequential(
             nn.Conv1d(channels, channels // 4, kernel_size=1),
-            nn.ReLU(inplace=True),
+            nn.SiLU(inplace=True),  # Smooth activation
             nn.Conv1d(channels // 4, 1, kernel_size=1),
         )
 
@@ -356,17 +380,20 @@ class AttentionPool1d(nn.Module):
 
 class XRDRegressor(nn.Module):
     """
-    Physics-informed 1D CNN Regressor for XRD rocking curve analysis (v3).
+    Physics-informed 1D CNN Regressor for XRD rocking curve analysis (v3 + improvements).
 
-    Improvements over v2:
+    Improvements over v3:
+    - SiLU activation: smoother gradients than ReLU (better for low intensities)
+    - Positional channel: helps with position-sensitive parameters (Rp1, Rp2)
     - K=15 kernel size (from Ziegler et al.): better feature extraction
     - Progressive channel expansion: 32→48→64→96→128→128 (vs constant 64)
     - Larger receptive field: 6 blocks with dilations up to 32 + larger kernels
-    - Attention-based pooling: preserves spatial info for position parameters (Rp2)
+    - Attention-based pooling: preserves spatial info for position parameters
     - Deeper MLP head: better parameter disentanglement
 
     Architecture:
-    - Stem: Conv1d(1→32) + BN + ReLU
+    - Input: [B, 1, L] intensity only (positional channel added in forward)
+    - Stem: Conv1d(2→32) + BN + SiLU (2 channels: intensity + position)
     - 6 Residual blocks with progressive channels and dilations:
       - Block 1: 32 ch, dilation=1  (local features)
       - Block 2: 48 ch, dilation=2  (short-range)
@@ -392,11 +419,12 @@ class XRDRegressor(nn.Module):
         channels = [32, 48, 64, 96, 128, 128]
         dilations = [1, 2, 4, 8, 16, 32]
 
-        # Stem: initial feature extraction
+        # Stem: initial feature extraction from 2 input channels
+        # Channel 0: XRD intensity, Channel 1: normalized position
         self.stem = nn.Sequential(
-            nn.Conv1d(1, channels[0], kernel_size=9, padding=4),
+            nn.Conv1d(2, channels[0], kernel_size=9, padding=4),  # 2 input channels
             nn.BatchNorm1d(channels[0]),
-            nn.ReLU(inplace=True),
+            nn.SiLU(inplace=True),  # Smooth activation
         )
 
         # Residual blocks with progressive channels and increasing dilation
@@ -430,14 +458,30 @@ class XRDRegressor(nn.Module):
         # Essential for position parameters (Rp1, Rp2)
         self.pool = AttentionPool1d(channels[5])
 
-        # MLP head: maps features to physical parameters
-        # Deeper network for better parameter disentanglement
+        # FFT spectral branch: captures oscillation periodicity
+        # Critical for layer thickness parameters (L1, L2)
+        # Oscillation period ∝ layer thickness (physical relationship)
+        self.fft_mlp = nn.Sequential(
+            nn.Linear(50, 64),  # 50 FFT frequency bins → 64 features
+            nn.SiLU(),
+            nn.Linear(64, 32),  # 64 → 32 spectral features
+            nn.SiLU(),
+        )
+
+        # Hann window for FFT (reduces spectral leakage)
+        # Registered as buffer so it moves to correct device with model
+        # Initialize as empty tensor (safer than None - avoids edge cases)
+        self.register_buffer('hann_window', torch.empty(0))
+
+        # MLP head: maps combined CNN + FFT features to physical parameters
+        # Input: 128 (CNN) + 32 (FFT) = 160 features
+        combined_features = channels[5] + 32
         self.head = nn.Sequential(
-            nn.Linear(channels[5], 256),
-            nn.ReLU(inplace=True),
+            nn.Linear(combined_features, 256),
+            nn.SiLU(inplace=True),  # Smooth activation for better gradients
             nn.Dropout(0.2),  # Regularization
             nn.Linear(256, 128),
-            nn.ReLU(inplace=True),
+            nn.SiLU(inplace=True),  # Smooth activation
             nn.Dropout(0.2),
             nn.Linear(128, n_out),
             nn.Sigmoid(),  # outputs in [0,1]
@@ -446,12 +490,30 @@ class XRDRegressor(nn.Module):
     def forward(self, x):
         """
         Args:
-            x: Input curves [B, 1, L] (L=650 for XRD rocking curves)
+            x: Input curves [B, 1, L] (L=700 for XRD rocking curves)
+               XRD intensity (log-normalized)
 
         Returns:
             Normalized parameters [B, P] in range [0, 1]
             Order: [Dmax1, D01, L1, Rp1, D02, L2, Rp2]
         """
+        # Add positional channel (create once per batch, not per sample)
+        # More efficient than creating in dataset.__getitem__
+        B, _, L = x.shape
+        position_channel = torch.linspace(
+            0, 1, L,
+            device=x.device,
+            dtype=x.dtype
+        ).unsqueeze(0).unsqueeze(0).expand(B, 1, -1)  # [B, 1, L]
+
+        x = torch.cat([x, position_channel], dim=1)  # [B, 2, L]
+
+        # Save intensity channel for FFT branch
+        # IMPORTANT: This is log10-normalized intensity (from dataset preprocessing)
+        # FFT will extract periodicity from the log-space curve
+        x_intensity = x[:, 0, :]  # [B, L] - log10-normalized XRD intensity
+
+        # CNN path: process both channels through stem + residual blocks
         x = self.stem(x)       # [B, 32, L]
 
         # Progressive channel expansion through residual blocks
@@ -472,5 +534,45 @@ class XRDRegressor(nn.Module):
 
         x = self.block6(x)     # [B, 128, L] - preserves spatial info
 
-        x = self.pool(x)       # [B, 128] - attention-weighted pooling
-        return self.head(x)    # [B, 7]
+        # CNN pooling
+        cnn_features = self.pool(x)  # [B, 128] - attention-weighted pooling
+
+        # FFT spectral branch: extract frequency features
+        # Captures oscillation periodicity for layer thickness (L1, L2)
+
+        # Apply Hann window to reduce spectral leakage
+        # In our case L is always 700 (interpolation), but we create dynamically for safety
+        L = x_intensity.shape[-1]
+        if self.hann_window.numel() != L:
+            # Create or recreate window if length changed
+            self.hann_window = torch.hann_window(
+                L,
+                device=x_intensity.device,
+                dtype=x_intensity.dtype
+            )
+
+        x_windowed = x_intensity * self.hann_window  # [B, L] apply window
+
+        fft = torch.fft.rfft(x_windowed, dim=-1, norm='ortho')  # [B, L//2+1] complex
+        fft_magnitude = torch.abs(fft) + 1e-12  # [B, L//2+1] real, avoid log(0)
+
+        # Drop DC bin (index 0) - not useful for periodic pattern detection
+        fft_magnitude = fft_magnitude[:, 1:]  # [B, L//2] without DC
+
+        # Log normalization of FFT magnitude for scale invariance
+        # NOTE: This is NOT duplicate logging! Input is log10(intensity), but
+        # FFT magnitude is a different signal (frequency domain) that needs its own log
+        # log10(intensity) = preprocessing, log1p(|FFT|) = spectral feature scaling
+        fft_magnitude = torch.log1p(
+            fft_magnitude / (fft_magnitude.amax(dim=-1, keepdim=True) + 1e-12)
+        )  # [B, L//2] normalized log magnitude
+
+        # Take first 50 bins (frequencies 1-50, since DC=0 is dropped)
+        # This captures oscillation periods relevant for layer thickness (L1, L2)
+        fft_features = fft_magnitude[:, :50]  # [B, 50] - bins 1-50
+        fft_features = self.fft_mlp(fft_features)  # [B, 32]
+
+        # Combine CNN and FFT features
+        combined = torch.cat([cnn_features, fft_features], dim=1)  # [B, 160]
+
+        return self.head(combined)  # [B, 7]

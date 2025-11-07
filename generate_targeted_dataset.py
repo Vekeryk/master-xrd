@@ -96,7 +96,8 @@ def sample_gaussian_with_constraints(center, param_ranges, std_pct=15, n_samples
 
     print(f"\n🎯 Center parameters:")
     for i, param in enumerate(PARAM_NAMES):
-        print(f"   {param:8s}: {center_arr[i]:12.6e} ± {std_arr[i]:12.6e} ({std_pct}% of range)")
+        print(
+            f"   {param:8s}: {center_arr[i]:12.6e} ± {std_arr[i]:12.6e} ({std_pct}% of range)")
 
     print(f"\n🔒 Physical constraints:")
     print(f"   1. D01 <= Dmax1")
@@ -152,7 +153,8 @@ def sample_gaussian_with_constraints(center, param_ranges, std_pct=15, n_samples
     pbar.close()
 
     if len(samples) < n_samples:
-        print(f"\n⚠️  WARNING: Could only generate {len(samples)} valid samples out of {n_samples} requested")
+        print(
+            f"\n⚠️  WARNING: Could only generate {len(samples)} valid samples out of {n_samples} requested")
         print(f"   Attempts: {attempts:,}")
         print(f"   Rejected (out of range): {rejected_range:,}")
         print(f"   Rejected (constraints): {rejected_constraint:,}")
@@ -164,8 +166,10 @@ def sample_gaussian_with_constraints(center, param_ranges, std_pct=15, n_samples
     else:
         print(f"\n✅ Generated {len(samples):,} valid samples")
         print(f"   Attempts: {attempts:,}")
-        print(f"   Rejected (out of range): {rejected_range:,} ({100*rejected_range/attempts:.1f}%)")
-        print(f"   Rejected (constraints): {rejected_constraint:,} ({100*rejected_constraint/attempts:.1f}%)")
+        print(
+            f"   Rejected (out of range): {rejected_range:,} ({100*rejected_range/attempts:.1f}%)")
+        print(
+            f"   Rejected (constraints): {rejected_constraint:,} ({100*rejected_constraint/attempts:.1f}%)")
         print(f"   Acceptance rate: {100*len(samples)/attempts:.2f}%")
 
     samples_arr = np.array(samples)
@@ -254,7 +258,7 @@ def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
     # Save dataset
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"dataset_{len(X)}_dl{int(dl*1e8)}_targeted_std{std_pct}.pkl"
+    filename = f"dataset_{len(X)}_dl{int(dl*1e8)}_targeted.pkl"
     filepath = os.path.join(output_dir, filename)
 
     data = {
@@ -290,8 +294,10 @@ def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
 
     for i, param in enumerate(PARAM_NAMES):
         param_range = RANGES[param]
-        X_norm[:, i] = (X[:, i] - param_range[0]) / (param_range[1] - param_range[0])
-        center_norm[i] = (center_arr[i] - param_range[0]) / (param_range[1] - param_range[0])
+        X_norm[:, i] = (X[:, i] - param_range[0]) / \
+            (param_range[1] - param_range[0])
+        center_norm[i] = (center_arr[i] - param_range[0]) / \
+            (param_range[1] - param_range[0])
 
     distances = np.linalg.norm(X_norm - center_norm, axis=1)
 
@@ -317,7 +323,8 @@ def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Generate targeted dataset around experimental parameters")
+    parser = argparse.ArgumentParser(
+        description="Generate targeted dataset around experimental parameters")
     parser.add_argument("--n-samples", type=int, default=10000,
                         help="Number of samples to generate (default: 10000)")
     parser.add_argument("--dl", type=float, default=100e-8,

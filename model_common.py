@@ -79,7 +79,73 @@ def get_device():
     return torch.device("cpu")
 
 
-def load_dataset(path: Path, use_full_curve: bool = False):
+def apply_noise_tail(curve, crop_by_peak=True, peak_offset=20):
+    """
+    Apply noise tail transformation to XRD curve
+
+    Args:
+        curve: numpy array or torch tensor
+        crop_by_peak: if True, crop from peak position before processing
+        peak_offset: offset from peak position for cropping
+
+    Returns:
+        tuple: (curve_np, was_processed)
+            - curve_np: numpy array with noise tail applied
+            - was_processed: True if noise tail was found and processed
+    """
+    # Convert to numpy if needed
+    if isinstance(curve, torch.Tensor):
+        curve_np = curve.cpu().numpy().copy()
+    else:
+        curve_np = np.array(curve, copy=True)
+
+    # Crop by peak if requested
+    if crop_by_peak:
+        peak_idx = np.argmax(curve_np)
+        crop_start = peak_idx + peak_offset
+        curve_np = curve_np[crop_start:]
+
+    # Find last point >= threshold from end
+    NOISE_THRESHOLD = 0.00025
+    LOOKBACK = 20
+
+    last_high_idx = None
+    for j in range(len(curve_np) - 1, -1, -1):
+        if curve_np[j] >= NOISE_THRESHOLD:
+            last_high_idx = j
+            break
+
+    if last_high_idx is not None:
+        # Exponential decay from -10 to +10 around last_high_idx
+        half_window = LOOKBACK // 2
+        transition_start = max(0, last_high_idx - half_window)
+        transition_end = min(len(curve_np), last_high_idx + half_window)
+
+        # Get starting value
+        start_val = curve_np[transition_start]
+        end_val = 2.2e-4  # Target noise level
+
+        # Exponential decay with noise
+        transition_len = transition_end - transition_start
+        for k in range(transition_len):
+            t = k / max(1, transition_len - 1)
+            exp_factor = np.exp(-3 * t)
+            base_val = end_val + (start_val - end_val) * exp_factor
+
+            # Add noise (2x less intense)
+            noise = np.random.normal(0, 0.075e-4)
+            curve_np[transition_start + k] = max(1.9e-4, base_val + noise)
+
+        # After transition_end - pure noise (2x less intense)
+        if transition_end < len(curve_np):
+            tail_len = len(curve_np) - transition_end
+            noise = np.random.normal(2.2e-4, 0.15e-4, tail_len)
+            curve_np[transition_end:] = np.clip(noise, 1.9e-4, 2.5e-4)
+
+    return curve_np
+
+
+def load_dataset(path: Path, use_full_curve: bool = False, crop_by_peak: bool = True, peak_offset: int = 20):
     """
     Load pickled dataset.
 
@@ -92,6 +158,8 @@ def load_dataset(path: Path, use_full_curve: bool = False):
         path: Path to pickle file
         use_full_curve: If False (default), apply crop_params if available.
                        If True, use full curve without cropping.
+        crop_by_peak: If True, crop each curve starting from peak + offset
+        peak_offset: Offset after peak to start cropping (default: 0 = from peak)
 
     Returns:
         X: Parameters tensor [N, P]
@@ -103,8 +171,53 @@ def load_dataset(path: Path, use_full_curve: bool = False):
     X = torch.as_tensor(data["X"]).float()  # [N, P]
     Y = torch.as_tensor(data["Y"]).float()  # [N, L]
 
+    # Crop by peak for each curve
+    if crop_by_peak and not use_full_curve:
+        N, L_orig = Y.shape
+        print(f"✓ Cropping by peak (offset={peak_offset})")
+        print(f"  Before crop: {tuple(Y.shape)}")
+
+        # Find peak for each curve
+        peak_indices = torch.argmax(Y, dim=1)  # [N]
+
+        # Find crop points (peak + offset)
+        crop_starts = peak_indices + peak_offset  # [N]
+
+        # Determine max length after cropping
+        max_len_after = (L_orig - crop_starts).max().item()
+
+        # Crop each curve and pad if needed
+        Y_cropped = []
+        for i in range(N):
+            start = crop_starts[i].item()
+            curve_cropped = Y[i, start:].clone()
+
+            # Apply noise tail processing (crop_by_peak=False because already cropped)
+            curve_np = apply_noise_tail(curve_cropped)
+            curve_cropped = torch.from_numpy(curve_np).float()
+            was_processed = True  # Always processed since we applied it
+
+            # Pad to max_len_after if needed (with noise, not zeros!)
+            if len(curve_cropped) < max_len_after:
+                pad_len = max_len_after - len(curve_cropped)
+                # Pad with noise if tail was replaced, otherwise zeros
+                if was_processed:
+                    pad_noise = np.random.normal(2.2e-4, 0.15e-4, pad_len)
+                    pad_noise = np.clip(pad_noise, 1.9e-4, 2.5e-4)
+                    pad_tensor = torch.from_numpy(pad_noise).float()
+                else:
+                    pad_tensor = torch.zeros(pad_len)
+                curve_cropped = torch.cat([curve_cropped, pad_tensor])
+
+            Y_cropped.append(curve_cropped)
+
+        Y = torch.stack(Y_cropped, dim=0)
+        print(f"  After crop:  {tuple(Y.shape)}")
+        print(
+            f"  Peak range: [{peak_indices.min().item()}, {peak_indices.max().item()}]")
+
     # Auto-crop if crop_params available and not using full curve
-    if not use_full_curve and "crop_params" in data:
+    elif not use_full_curve and "crop_params" in data:
         crop_info = data["crop_params"]
         # start_ML = crop_info.get("start_ML", 50)
         start_ML = 40
@@ -333,7 +446,8 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv1d(c, c, kernel_size=kernel_size,
                                padding=pad, dilation=dilation)
         self.bn2 = nn.BatchNorm1d(c)
-        self.act = nn.SiLU(inplace=True)  # Smooth activation for better gradients
+        # Smooth activation for better gradients
+        self.act = nn.SiLU(inplace=True)
 
     def forward(self, x):
         h = self.act(self.bn1(self.conv1(x)))
@@ -422,7 +536,8 @@ class XRDRegressor(nn.Module):
         # Stem: initial feature extraction from 2 input channels
         # Channel 0: XRD intensity, Channel 1: normalized position
         self.stem = nn.Sequential(
-            nn.Conv1d(2, channels[0], kernel_size=9, padding=4),  # 2 input channels
+            nn.Conv1d(2, channels[0], kernel_size=9,
+                      padding=4),  # 2 input channels
             nn.BatchNorm1d(channels[0]),
             nn.SiLU(inplace=True),  # Smooth activation
         )
@@ -553,8 +668,10 @@ class XRDRegressor(nn.Module):
 
         x_windowed = x_intensity * self.hann_window  # [B, L] apply window
 
-        fft = torch.fft.rfft(x_windowed, dim=-1, norm='ortho')  # [B, L//2+1] complex
-        fft_magnitude = torch.abs(fft) + 1e-12  # [B, L//2+1] real, avoid log(0)
+        # [B, L//2+1] complex
+        fft = torch.fft.rfft(x_windowed, dim=-1, norm='ortho')
+        # [B, L//2+1] real, avoid log(0)
+        fft_magnitude = torch.abs(fft) + 1e-12
 
         # Drop DC bin (index 0) - not useful for periodic pattern detection
         fft_magnitude = fft_magnitude[:, 1:]  # [B, L//2] without DC

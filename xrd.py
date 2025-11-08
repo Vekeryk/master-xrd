@@ -24,6 +24,8 @@ import time
 from numba import njit
 from functools import wraps
 
+from model_common import apply_noise_tail
+
 
 @dataclass
 class Curve:
@@ -858,7 +860,8 @@ def compute_curve_and_profile(array=None,
                               params_obj: DeformationProfile = None,
                               verbose=False,
                               dl=100e-8,
-                              bicrystal: bool = False):
+                              bicrystal: bool = False,
+                              instrumental: bool = False):
     """
     Compute XRD curve and deformation profile.
 
@@ -944,6 +947,9 @@ def compute_curve_and_profile(array=None,
                       total_Y=profile_total_Y,
                       asymmetric_Y=profile_asymmetric_Y,
                       decaying_Y=profile_decaying_Y)
+
+    if instrumental:
+        curve.Y_R_vseZ = apply_noise_tail(R_convolved.copy())
 
     return curve, profile
 

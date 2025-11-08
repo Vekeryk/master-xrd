@@ -42,7 +42,8 @@ def denormalize_params_numpy(params_normalized: np.ndarray) -> np.ndarray:
     params_phys = np.zeros(7, dtype=np.float64)
     for i, name in enumerate(PARAM_NAMES):
         min_val, max_val = RANGES[name]
-        params_phys[i] = min_val + (max_val - min_val) * float(params_normalized[i])
+        params_phys[i] = min_val + \
+            (max_val - min_val) * float(params_normalized[i])
     return params_phys
 
 
@@ -87,22 +88,26 @@ def simulate_curve_normalized(
         m1=m1,
         m10=m10,
         ik=ik,
-        verbose=False
+        verbose=False,
+        instrumental=True
     )
 
     # Get convolved curve
     R_vseZ = curve_obj.Y_R_vseZ
 
     # Crop GGG peak (SAME as dataset generation)
-    start, end = crop_params
-    curve = R_vseZ[start:end]
+    # start, end = crop_params
+    # curve = R_vseZ[start:end]
+
+    curve = R_vseZ[:]
 
     # Log-normalize (SAME as NormalizedXRDDataset)
     curve = np.clip(curve, 1e-12, None)
     curve_log = np.log10(curve)
     curve_log_min = curve_log.min()
     curve_log_max = curve_log.max()
-    curve_normalized = (curve_log - curve_log_min) / (curve_log_max - curve_log_min + 1e-12)
+    curve_normalized = (curve_log - curve_log_min) / \
+        (curve_log_max - curve_log_min + 1e-12)
 
     return curve_normalized.astype(np.float64)
 
@@ -194,7 +199,8 @@ class XRD_SPSA(torch.autograd.Function):
 
         # SPSA for each sample
         for i in range(batch_size):
-            v = grad_output[i].detach().cpu().numpy()  # [L] - incoming gradient
+            # [L] - incoming gradient
+            v = grad_output[i].detach().cpu().numpy()
             theta = theta_norm[i].detach().cpu().numpy()  # [7] in [0,1]
 
             # Random perturbation: Δ ~ {-1, +1}^7
@@ -225,7 +231,8 @@ class XRD_SPSA(torch.autograd.Function):
             grad_estimate = ((phi_plus - phi_minus) / (2.0 * c)) * delta  # [7]
 
             # Convert to torch
-            grad_theta[i] = torch.from_numpy(grad_estimate).to(device=device, dtype=dtype)
+            grad_theta[i] = torch.from_numpy(
+                grad_estimate).to(device=device, dtype=dtype)
 
         # Return gradient only for theta_norm (other args have None)
         return grad_theta, None, None, None, None
@@ -439,8 +446,10 @@ def test_spsa_backward():
     loss.backward()
 
     print(f"  Gradients shape: {theta_norm.grad.shape}")
-    print(f"  Gradients range: [{theta_norm.grad.min():.6f}, {theta_norm.grad.max():.6f}]")
-    print(f"  Gradient nonzero: {(theta_norm.grad != 0).sum().item()}/{theta_norm.grad.numel()}")
+    print(
+        f"  Gradients range: [{theta_norm.grad.min():.6f}, {theta_norm.grad.max():.6f}]")
+    print(
+        f"  Gradient nonzero: {(theta_norm.grad != 0).sum().item()}/{theta_norm.grad.numel()}")
     print("✓ Backward pass OK")
 
 
@@ -462,7 +471,8 @@ def test_curve_reconstruction_loss():
     # Backward
     loss.backward()
     print(f"  Gradients shape: {params_pred.grad.shape}")
-    print(f"  Gradients nonzero: {(params_pred.grad != 0).sum().item()}/{params_pred.grad.numel()}")
+    print(
+        f"  Gradients nonzero: {(params_pred.grad != 0).sum().item()}/{params_pred.grad.numel()}")
     print("✓ Curve reconstruction loss OK")
 
 

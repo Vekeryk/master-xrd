@@ -16,7 +16,7 @@ import sys
 import torch
 import numpy as np
 from pathlib import Path
-from model_common import XRDRegressor, RANGES, PARAM_NAMES
+from model_common import XRDRegressor, RANGES, PARAM_NAMES, apply_noise_tail
 
 # --- Check arguments ---
 if len(sys.argv) != 3:
@@ -53,14 +53,11 @@ if not Path(model_path).exists():
 try:
     # --- Load input curve ---
     with open(input_file, 'r') as f:
-        curve_raw = np.array([float(line.strip()) for line in f if line.strip()], dtype=np.float32)
+        curve_raw = np.array([float(line.strip())
+                             for line in f if line.strip()], dtype=np.float32)
 
-    # --- Crop curve [40:701] -> 661 points (like in notebook) ---
-    if len(curve_raw) >= 701:
-        curve_cropped = curve_raw[40:701]  # 661 points
-    else:
-        # If shorter, just skip first 40
-        curve_cropped = curve_raw[40:min(len(curve_raw), 701)]
+    # --- Apply noise tail (crop by peak + noise processing) ---
+    curve_cropped = apply_noise_tail(curve_raw)
 
     # --- Preprocessing (must match NormalizedXRDDataset) ---
     # Clip to avoid log(0)
@@ -78,7 +75,8 @@ try:
     device = torch.device('cpu')
     model = XRDRegressor().to(device)
 
-    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    checkpoint = torch.load(
+        model_path, map_location=device, weights_only=False)
     state_dict = checkpoint['model']
 
     # Remove hann_window if present
@@ -91,7 +89,8 @@ try:
     # --- Predict ---
     with torch.no_grad():
         # Convert to tensor [1, 1, 661]
-        curve_tensor = torch.from_numpy(curve_norm).unsqueeze(0).unsqueeze(0).to(device)
+        curve_tensor = torch.from_numpy(
+            curve_norm).unsqueeze(0).unsqueeze(0).to(device)
 
         # Get normalized predictions [1, 7]
         params_norm = model(curve_tensor)[0].cpu().numpy()

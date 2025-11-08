@@ -70,7 +70,7 @@ def train_with_curve_validation(
     # Setup
     set_seed(seed)
     device = get_device()
-    X, Y = load_dataset(Path(data_path), use_full_curve=use_full_curve)
+    X, Y = load_dataset(Path(data_path), crop_by_peak=True)
     n = X.size(0)
 
     # Move loss weights to device
@@ -290,7 +290,7 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset
-    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
+    DATA_PATH = "datasets/dataset_1000_dl100_targeted.pkl"
     DATASET_NAME = Path(DATA_PATH).stem
 
     # Model paths
@@ -299,15 +299,15 @@ if __name__ == "__main__":
 
     # Training hyperparameters
     EPOCHS = 100
-    # BATCH_SIZE = 32
-    BATCH_SIZE = 128
+    BATCH_SIZE = 32
+    # BATCH_SIZE = 128
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-4
     VAL_SPLIT = 0.2
     SEED = 42
 
     # Preprocessing
-    USE_LOG_SPACE = True   # CRITICAL: Must match model v3.1
+    USE_LOG_SPACE = False   # CRITICAL: Must match model v3.1
     # Use cropped [40:701] = 661 points (MUST match SPSA!)
     USE_FULL_CURVE = False
 

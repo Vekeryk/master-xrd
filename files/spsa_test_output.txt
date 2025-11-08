@@ -1,0 +1,40 @@
+======================================================================
+XRD SPSA WRAPPER TESTS
+======================================================================
+
+⚠️  Warning: These tests are SLOW (real XRD simulations)
+Expected time: ~30-60 seconds
+
+Testing SPSA forward pass...
+  Input shape: torch.Size([2, 7])
+  Output shape: torch.Size([2, 661])
+  Output range: [0.0000, 1.0000]
+✓ Forward pass OK
+
+Testing SPSA backward pass...
+  Gradients shape: torch.Size([2, 7])
+  Gradients range: [-2.462721, 2.462721]
+  Gradient nonzero: 14/14
+✓ Backward pass OK
+
+Testing curve reconstruction loss...
+  Loss: 0.310709
+  Gradients shape: torch.Size([2, 7])
+  Gradients nonzero: 14/14
+✓ Curve reconstruction loss OK
+
+Testing hybrid loss...
+  Param loss: 0.182957
+  Curve loss: 0.318893
+  Total loss: 0.214846
+  Gradients shape: torch.Size([2, 7])
+✓ Hybrid loss OK
+
+======================================================================
+✅ All tests passed!
+======================================================================
+
+📊 Performance:
+  - SPSA: 2 simulations per sample (vs 14 for naive FD)
+  - 7× speedup for 7 parameters!
+  - Ready for training with hybrid loss

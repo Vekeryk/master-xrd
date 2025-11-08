@@ -11,6 +11,7 @@ analysis_report/
 __pycache__/
 *.py[codz]
 *$py.class
+dist_test/
 
 # C extensions
 *.so

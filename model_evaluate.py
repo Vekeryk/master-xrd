@@ -65,7 +65,8 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples, us
     # Remove hann_window from checkpoint if present (it's recreated dynamically in forward())
     state_dict = ckpt["model"]
     if "hann_window" in state_dict:
-        print("   Note: Removing hann_window from checkpoint (will be recreated dynamically)")
+        print(
+            "   Note: Removing hann_window from checkpoint (will be recreated dynamically)")
         state_dict.pop("hann_window")
 
     model.load_state_dict(state_dict, strict=False)
@@ -124,8 +125,12 @@ def evaluate(data_path, model_path, batch_size, use_log_space, show_examples, us
         idx = torch.randint(0, X.size(0), (show_examples,))
 
         output_to_copy = []
+        idx_list = idx.tolist()
+        # add first one
+        if 0 not in idx_list:
+            idx_list[0] = 0
 
-        for i in idx.tolist():
+        for i in idx_list:
             t = X[i]  # true
             p = Theta_hat[i]  # predicted
             e = (p - t)  # error
@@ -190,9 +195,9 @@ if __name__ == "__main__":
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_full.pt"
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_unweighted_full.pt"
 
-    DATA_PATH = "datasets/dataset_10000_dl100_7d.pkl"  # For quick testing
+    DATA_PATH = "datasets/dataset_10000_dl100_targeted.pkl"  # For quick testing
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_full.pt"
-    MODEL_PATH = f"checkpoints/dataset_10000_dl100.pt"
+    MODEL_PATH = f"checkpoints/10000_target_log_best_params.pt"
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
 
     # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl" # For mid
@@ -207,11 +212,11 @@ if __name__ == "__main__":
     # MODEL_PATH = f"checkpoints/{DATASET_NAME}_v2.pt"  # v2 physics-informed (for comparison)
     # MODEL_PATH = f"checkpoints/{DATASET_NAME}.pt"  # Old baseline model (for comparison)
 
-    BATCH_SIZE = 256
-    USE_LOG_SPACE = False  # Must match training setting
+    BATCH_SIZE = 32
+    USE_LOG_SPACE = True  # Must match training setting
     USE_FULL_CURVE = False  # Must match training setting
 
-    SHOW_EXAMPLES = 10  # Number of random examples to display (0 to disable)
+    SHOW_EXAMPLES = 1  # Number of random examples to display (0 to disable)
 
     # Run evaluation
     evaluate(

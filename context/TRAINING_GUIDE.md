@@ -49,54 +49,66 @@ USE_LOG_SPACE = False  # Linear space
 
 Автоматично генерується на основі прапорців:
 
-| WEIGHTED | FULL_CURVE | Model Name |
-|----------|------------|------------|
-| True | False | `dataset_100000_dl100_7d_v3.pt` |
-| True | True | `dataset_100000_dl100_7d_v3_full.pt` |
-| False | False | `dataset_100000_dl100_7d_v3_unweighted.pt` |
-| False | True | `dataset_100000_dl100_7d_v3_unweighted_full.pt` |
+| WEIGHTED | FULL_CURVE | Model Name                                      |
+| -------- | ---------- | ----------------------------------------------- |
+| True     | False      | `dataset_100000_dl100_7d_v3.pt`                 |
+| True     | True       | `dataset_100000_dl100_7d_v3_full.pt`            |
+| False    | False      | `dataset_100000_dl100_7d_v3_unweighted.pt`      |
+| False    | True       | `dataset_100000_dl100_7d_v3_unweighted_full.pt` |
 
 ## Usage Examples
 
 ### Example 1: Weighted + Cropped (Default)
+
 ```python
 # model_train.py lines 258-263
 WEIGHTED_TRAINING = True
 FULL_CURVE_TRAINING = False
 ```
+
 ```bash
 python model_train.py
 ```
+
 → Model: `checkpoints/dataset_100000_dl100_7d_v3.pt`
 
 ### Example 2: Weighted + Full Curve
+
 ```python
 WEIGHTED_TRAINING = True
 FULL_CURVE_TRAINING = True  # ← Enable full curve
 ```
+
 ```bash
 python model_train.py
 ```
+
 → Model: `checkpoints/dataset_100000_dl100_7d_v3_full.pt`
 
 ### Example 3: Unweighted + Cropped (Baseline)
+
 ```python
 WEIGHTED_TRAINING = False  # ← Disable weighted loss
 FULL_CURVE_TRAINING = False
 ```
+
 ```bash
 python model_train.py
 ```
+
 → Model: `checkpoints/dataset_100000_dl100_7d_v3_unweighted.pt`
 
 ### Example 4: Unweighted + Full Curve
+
 ```python
 WEIGHTED_TRAINING = False
 FULL_CURVE_TRAINING = True
 ```
+
 ```bash
 python model_train.py
 ```
+
 → Model: `checkpoints/dataset_100000_dl100_7d_v3_unweighted_full.pt`
 
 ## Loss Weights Configuration

@@ -290,12 +290,8 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset
-    DATA_PATH = "datasets/dataset_1000_dl100_targeted.pkl"
+    DATA_PATH = "datasets/dataset_10000_dl100_targeted.pkl"
     DATASET_NAME = Path(DATA_PATH).stem
-
-    # Model paths
-    MODEL_PATH_PARAMS = f"checkpoints/{DATASET_NAME}_curve_val_best_params.pt"
-    MODEL_PATH_CURVE = f"checkpoints/{DATASET_NAME}_curve_val_best_curve.pt"
 
     # Training hyperparameters
     EPOCHS = 100
@@ -307,7 +303,7 @@ if __name__ == "__main__":
     SEED = 42
 
     # Preprocessing
-    USE_LOG_SPACE = False   # CRITICAL: Must match model v3.1
+    USE_LOG_SPACE = True   # CRITICAL: Must match model v3.1
     # Use cropped [40:701] = 661 points (MUST match SPSA!)
     USE_FULL_CURVE = False
 
@@ -324,6 +320,20 @@ if __name__ == "__main__":
     # Curve validation settings
     C_REL = 1e-3  # SPSA step size
     CURVE_VAL_BATCH_SIZE = 4  # Small batch because 2 sims/sample
+
+    BASE_NAME = DATA_PATH.split('_')[1]
+
+    if "target" in DATASET_NAME:
+        BASE_NAME += "_target"
+
+    if USE_LOG_SPACE:
+        BASE_NAME += "_log"
+    else:
+        BASE_NAME += "_lin"
+
+    # Model paths
+    MODEL_PATH_PARAMS = f"checkpoints/{BASE_NAME}_best_params.pt"
+    MODEL_PATH_CURVE = f"checkpoints/{BASE_NAME}_best_curve.pt"
 
     print("\n" + "=" * 70)
     print("CONFIGURATION SUMMARY")

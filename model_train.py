@@ -331,7 +331,7 @@ if __name__ == "__main__":
     FULL_CURVE_TRAINING = False
 
     # Log-space transformation: Apply log10 to curves before normalization
-    USE_LOG_SPACE = False  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
+    USE_LOG_SPACE = True  # ⚠️ CRITICAL for XRD! Model v3 trained with log_space=True
     # USE_LOG_SPACE = False  # Linear space (not recommended for XRD curves)
 
     # Augmented Sampling: Duplicate edge samples for better coverage of sensitive regions

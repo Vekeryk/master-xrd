@@ -79,20 +79,7 @@ def get_device():
     return torch.device("cpu")
 
 
-def apply_noise_tail(curve, crop_by_peak=True, peak_offset=20):
-    """
-    Apply noise tail transformation to XRD curve
-
-    Args:
-        curve: numpy array or torch tensor
-        crop_by_peak: if True, crop from peak position before processing
-        peak_offset: offset from peak position for cropping
-
-    Returns:
-        tuple: (curve_np, was_processed)
-            - curve_np: numpy array with noise tail applied
-            - was_processed: True if noise tail was found and processed
-    """
+def apply_noise_tail(curve, crop_by_peak=True, peak_offset=30):
     # Convert to numpy if needed
     if isinstance(curve, torch.Tensor):
         curve_np = curve.cpu().numpy().copy()
@@ -107,7 +94,6 @@ def apply_noise_tail(curve, crop_by_peak=True, peak_offset=20):
 
     # Find last point >= threshold from end
     NOISE_THRESHOLD = 0.00025
-    LOOKBACK = 20
 
     last_high_idx = None
     for j in range(len(curve_np) - 1, -1, -1):
@@ -116,36 +102,24 @@ def apply_noise_tail(curve, crop_by_peak=True, peak_offset=20):
             break
 
     if last_high_idx is not None:
-        # Exponential decay from -10 to +10 around last_high_idx
-        half_window = LOOKBACK // 2
-        transition_start = max(0, last_high_idx - half_window)
-        transition_end = min(len(curve_np), last_high_idx + half_window)
+        curve_np[last_high_idx:] = 0.00025
 
-        # Get starting value
-        start_val = curve_np[transition_start]
-        end_val = 2.2e-4  # Target noise level
+        w, i = 10, last_high_idx                         # ширина і центр сходинки
+        L, R = max(0, i - w), min(len(curve_np) - 1, i + 50)
+        eps = 1e-12
+        t = np.linspace(0, 1, R - L + 1)
+        s = 1 - (1 - t)**3
+        yl = np.log10(curve_np[L] + eps)
+        fl = np.log10(curve_np[R] + eps)
+        curve_np[L:R + 1] = 10**(fl + (yl - fl) * (1 - s))
 
-        # Exponential decay with noise
-        transition_len = transition_end - transition_start
-        for k in range(transition_len):
-            t = k / max(1, transition_len - 1)
-            exp_factor = np.exp(-3 * t)
-            base_val = end_val + (start_val - end_val) * exp_factor
-
-            # Add noise (2x less intense)
-            noise = np.random.normal(0, 0.075e-4)
-            curve_np[transition_start + k] = max(1.9e-4, base_val + noise)
-
-        # After transition_end - pure noise (2x less intense)
-        if transition_end < len(curve_np):
-            tail_len = len(curve_np) - transition_end
-            noise = np.random.normal(2.2e-4, 0.15e-4, tail_len)
-            curve_np[transition_end:] = np.clip(noise, 1.9e-4, 2.5e-4)
+        # ≈ ±2% noise
+        curve_np[L:] *= np.exp(np.random.normal(0, 0.02, len(curve_np[L:])))
 
     return curve_np
 
 
-def load_dataset(path: Path, use_full_curve: bool = False, crop_by_peak: bool = True, peak_offset: int = 20):
+def load_dataset(path: Path, use_full_curve=False, crop_by_peak=True):
     """
     Load pickled dataset.
 
@@ -174,54 +148,25 @@ def load_dataset(path: Path, use_full_curve: bool = False, crop_by_peak: bool = 
     # Crop by peak for each curve
     if crop_by_peak and not use_full_curve:
         N, L_orig = Y.shape
-        print(f"✓ Cropping by peak (offset={peak_offset})")
         print(f"  Before crop: {tuple(Y.shape)}")
 
-        # Find peak for each curve
-        peak_indices = torch.argmax(Y, dim=1)  # [N]
-
         # Find crop points (peak + offset)
-        crop_starts = peak_indices + peak_offset  # [N]
-
-        # Determine max length after cropping
-        max_len_after = (L_orig - crop_starts).max().item()
-
-        # Crop each curve and pad if needed
         Y_cropped = []
         for i in range(N):
-            start = crop_starts[i].item()
-            curve_cropped = Y[i, start:].clone()
-
-            # Apply noise tail processing (crop_by_peak=False because already cropped)
-            curve_np = apply_noise_tail(curve_cropped)
+            curve_np = apply_noise_tail(Y[i].clone())
             curve_cropped = torch.from_numpy(curve_np).float()
-            was_processed = True  # Always processed since we applied it
-
-            # Pad to max_len_after if needed (with noise, not zeros!)
-            if len(curve_cropped) < max_len_after:
-                pad_len = max_len_after - len(curve_cropped)
-                # Pad with noise if tail was replaced, otherwise zeros
-                if was_processed:
-                    pad_noise = np.random.normal(2.2e-4, 0.15e-4, pad_len)
-                    pad_noise = np.clip(pad_noise, 1.9e-4, 2.5e-4)
-                    pad_tensor = torch.from_numpy(pad_noise).float()
-                else:
-                    pad_tensor = torch.zeros(pad_len)
-                curve_cropped = torch.cat([curve_cropped, pad_tensor])
 
             Y_cropped.append(curve_cropped)
 
         Y = torch.stack(Y_cropped, dim=0)
         print(f"  After crop:  {tuple(Y.shape)}")
-        print(
-            f"  Peak range: [{peak_indices.min().item()}, {peak_indices.max().item()}]")
 
     # Auto-crop if crop_params available and not using full curve
-    elif not use_full_curve and "crop_params" in data:
-        crop_info = data["crop_params"]
+    elif not use_full_curve:
+        # crop_info = data["crop_params"]
         # start_ML = crop_info.get("start_ML", 50)
         start_ML = 40
-        m1 = crop_info.get("m1", 700)
+        m1 = 700
 
         print(f"✓ Applying crop_params: Y[:, {start_ML}:{m1}]")
         print(f"  Before crop: {tuple(Y.shape)}")

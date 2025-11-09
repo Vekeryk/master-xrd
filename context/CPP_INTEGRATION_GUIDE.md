@@ -73,7 +73,7 @@ String tempCurve = appDir + "temp_curve.txt";
 
 ✅ **Працює:**
 ```cpp
-system("\"predict.exe\" \"temp_curve.txt\" \"temp_params.txt\"");
+system("\"predict.exe\" \"checkpoints/model.pt\" \"temp_curve.txt\" \"temp_params.txt\"");
 ```
 
 ⚠️ **Проблеми:**
@@ -341,7 +341,7 @@ Rp2      -1.234567e+03
 
 ```cpp
 // ПРОБЛЕМИ:
-system("\"predict.exe\" \"temp_curve.txt\" \"temp_params.txt\"");
+system("\"predict.exe\" \"checkpoints/model.pt\" \"temp_curve.txt\" \"temp_params.txt\"");
 
 // 1. Вразливий до command injection
 // 2. Проблеми з шляхами з пробілами

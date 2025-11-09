@@ -16,7 +16,8 @@
 //---------------------------------------------------------------------------
 int PredictFromCurve(double* curve, int curve_length,
                      DeformParams* params,
-                     const char* predictor_path)
+                     const char* predictor_path,
+                     const char* model_path)
 {
     // Перевірка вхідних даних
     if (!curve || !params || curve_length != 661) {
@@ -42,6 +43,18 @@ int PredictFromCurve(double* curve, int curve_length,
         return 0;  // Predictor не знайдено
     }
 
+    // Повний шлях до моделі
+    String modelFile;
+    if (FileExists(model_path)) {
+        modelFile = model_path;
+    } else {
+        modelFile = appDir + model_path;
+    }
+
+    if (!FileExists(modelFile)) {
+        return 0;  // Model не знайдено
+    }
+
     // 1. Зберегти криву у файл
     try {
         TStringList* curveFile = new TStringList();
@@ -63,6 +76,7 @@ int PredictFromCurve(double* curve, int curve_length,
     // _spawnl автоматично екранує аргументи - НЕ ПОТРІБНІ КАВИЧКИ!
     // _P_WAIT = блокує до завершення (як system, але безпечніше)
     AnsiString exePath = predictorExe;
+    AnsiString modelPathStr = modelFile;
     AnsiString curvePath = tempCurve;
     AnsiString paramsPath = tempParams;
 
@@ -70,8 +84,9 @@ int PredictFromCurve(double* curve, int curve_length,
         _P_WAIT,                    // Чекати завершення
         exePath.c_str(),            // Шлях до .exe
         exePath.c_str(),            // argv[0] (ім'я програми)
-        curvePath.c_str(),          // argv[1] (input curve)
-        paramsPath.c_str(),         // argv[2] (output params)
+        modelPathStr.c_str(),       // argv[1] (model checkpoint)
+        curvePath.c_str(),          // argv[2] (input curve)
+        paramsPath.c_str(),         // argv[3] (output params)
         NULL                        // Кінець аргументів
     );
 
@@ -172,7 +187,7 @@ void __fastcall TForm1::PredictButtonClick(TObject *Sender)
 
     // Predict (блокує UI на 1-2 сек, але безпечно)
     DeformParams predicted;
-    int success = PredictFromCurve(curve, 661, &predicted, "predict.exe");
+    int success = PredictFromCurve(curve, 661, &predicted, "predict.exe", "checkpoints/model.pt");
 
     Cursor = crDefault;
 

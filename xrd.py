@@ -24,7 +24,7 @@ import time
 from numba import njit
 from functools import wraps
 
-from model_common import apply_noise_tail
+from model_common import preprocess_curve
 
 
 @dataclass
@@ -949,7 +949,7 @@ def compute_curve_and_profile(array=None,
                       decaying_Y=profile_decaying_Y)
 
     if instrumental:
-        curve.Y_R_vseZ = apply_noise_tail(R_convolved.copy())
+        curve.Y_R_vseZ = preprocess_curve(R_convolved.copy())
 
     return curve, profile
 

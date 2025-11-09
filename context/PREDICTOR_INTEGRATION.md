@@ -228,7 +228,7 @@ np.savetxt('curve.txt', curve)
 
 # Run predictor
 import subprocess
-subprocess.run(['./predict.exe', 'curve.txt', 'params.txt'])
+subprocess.run(['./predict.exe', 'checkpoints/model.pt', 'curve.txt', 'params.txt'])
 
 # Read result
 with open('params.txt') as f:

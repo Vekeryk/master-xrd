@@ -79,7 +79,19 @@ def get_device():
     return torch.device("cpu")
 
 
-def apply_noise_tail(curve, crop_by_peak=True, peak_offset=30):
+def preprocess_curve(curve, crop_by_peak=True, peak_offset=30, target_length=None):
+    """
+    Apply noise tail and optionally pad/truncate to target length.
+
+    Args:
+        curve: Input curve (numpy array or torch tensor)
+        crop_by_peak: If True, crop from peak position
+        peak_offset: Offset after peak (default 30)
+        target_length: If specified, pad or truncate to this length
+
+    Returns:
+        numpy array with noise tail applied and adjusted to target_length
+    """
     # Convert to numpy if needed
     if isinstance(curve, torch.Tensor):
         curve_np = curve.cpu().numpy().copy()
@@ -102,7 +114,7 @@ def apply_noise_tail(curve, crop_by_peak=True, peak_offset=30):
             break
 
     if last_high_idx is not None:
-        curve_np[last_high_idx:] = 0.00025
+        curve_np[last_high_idx:] = NOISE_THRESHOLD
 
         w, i = 10, last_high_idx                         # ширина і центр сходинки
         L, R = max(0, i - w), min(len(curve_np) - 1, i + 50)
@@ -115,6 +127,24 @@ def apply_noise_tail(curve, crop_by_peak=True, peak_offset=30):
 
         # ≈ ±2% noise
         curve_np[L:] *= np.exp(np.random.normal(0, 0.02, len(curve_np[L:])))
+
+    # Pad or truncate to target_length if specified
+    if target_length is not None:
+        current_length = len(curve_np)
+
+        if current_length < target_length:
+            # Pad with constant NOISE_THRESHOLD then apply exponential noise
+            pad_len = target_length - current_length
+            pad_values = np.full(pad_len, NOISE_THRESHOLD)
+            curve_np = np.concatenate([curve_np, pad_values])
+
+            # Apply exponential noise to padded section (±2% like line 129)
+            curve_np[current_length:] *= np.exp(
+                np.random.normal(0, 0.02, pad_len))
+
+        elif current_length > target_length:
+            # Truncate
+            curve_np = curve_np[:target_length]
 
     return curve_np
 
@@ -153,7 +183,7 @@ def load_dataset(path: Path, use_full_curve=False, crop_by_peak=True):
         # Find crop points (peak + offset)
         Y_cropped = []
         for i in range(N):
-            curve_np = apply_noise_tail(Y[i].clone())
+            curve_np = preprocess_curve(Y[i].clone())
             curve_cropped = torch.from_numpy(curve_np).float()
 
             Y_cropped.append(curve_cropped)

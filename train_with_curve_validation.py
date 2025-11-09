@@ -290,13 +290,13 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset
-    DATA_PATH = "datasets/dataset_10000_dl100_targeted.pkl"
+    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
     DATASET_NAME = Path(DATA_PATH).stem
 
     # Training hyperparameters
     EPOCHS = 100
-    BATCH_SIZE = 32
-    # BATCH_SIZE = 128
+    # BATCH_SIZE = 32
+    BATCH_SIZE = 128
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-4
     VAL_SPLIT = 0.2

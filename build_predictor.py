@@ -36,14 +36,8 @@ def build_executable():
         print("   Install with: pip install pyinstaller")
         sys.exit(1)
 
-    # Check if model exists
-    model_path = Path("checkpoints/dataset_1000_dl100_7d_curve_val_best_curve.pt")
-    if not model_path.exists():
-        print(f"❌ Model checkpoint not found: {model_path}")
-        print("   Train model first or specify different path")
-        sys.exit(1)
-
-    print(f"✓ Model checkpoint found: {model_path}")
+    # Note: Model is NOT bundled - passed as CLI argument
+    print("ℹ️  Model checkpoint NOT bundled (passed as CLI argument)")
 
     # Clean previous builds
     for path in ['build', 'dist', 'predict.spec']:
@@ -61,7 +55,12 @@ def build_executable():
         '--name=predict',               # Output name: predict.exe
         '--console',                    # Show console output
         '--clean',                      # Clean cache
-        '--add-data', f'{model_path}{os.pathsep}checkpoints',  # Bundle model
+        # Hidden imports for PyTorch
+        '--hidden-import=torch',
+        '--hidden-import=torch.nn',
+        '--hidden-import=torch.optim',
+        '--collect-submodules=torch',
+        # Model NOT bundled - passed as CLI argument
         'predict.py'
     ]
 
@@ -92,13 +91,15 @@ def build_executable():
     print()
     print("📦 Package contents:")
     print("   - PyTorch runtime")
-    print("   - Model checkpoint")
     print("   - All dependencies")
     print()
     print("🚀 Usage:")
-    print(f"   {exe_path} curve.txt params.txt")
+    print(f"   {exe_path} model.pt curve.txt params.txt")
     print()
-    print("💡 You can copy predict.exe anywhere - no Python needed!")
+    print("💡 Notes:")
+    print("   - Model checkpoint is NOT bundled (pass as argument)")
+    print("   - You can use different models without rebuilding")
+    print("   - Copy predict.exe + checkpoints/ folder together")
     print("=" * 70)
 
 
@@ -112,7 +113,19 @@ def test_executable():
         print("❌ Executable not found. Build first!")
         return
 
+    # Find a model checkpoint
+    model_path = None
+    for checkpoint in Path('checkpoints').glob('*.pt'):
+        model_path = checkpoint
+        break
+
+    if not model_path:
+        print("❌ No model checkpoint found in checkpoints/")
+        print("   Train a model first or specify checkpoint path")
+        return
+
     print("\n🧪 Testing executable...")
+    print(f"   Using model: {model_path}")
 
     # Create test curve
     import numpy as np
@@ -128,7 +141,7 @@ def test_executable():
     # Run predictor
     test_output_path = Path('test_params.txt')
     result = subprocess.run(
-        [str(exe_path), str(test_curve_path), str(test_output_path)],
+        [str(exe_path), str(model_path), str(test_curve_path), str(test_output_path)],
         capture_output=True,
         text=True
     )

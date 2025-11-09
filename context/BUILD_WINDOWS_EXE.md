@@ -2,24 +2,36 @@
 
 ## ШВИДКА ІНСТРУКЦІЯ
 
-### test_predictor.py (тестовий):
+### predict.py (основний predictor з PyTorch):
 ```bash
-wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=test_predictor_win --noconsole --clean test_predictor.py
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
+  --onefile \
+  --name=predict \
+  --console \
+  --clean \
+  --hidden-import=torch \
+  --hidden-import=torch.nn \
+  --hidden-import=torch.optim \
+  --collect-submodules=torch \
+  predict.py
 ```
 
-### predict.py (основний predictor):
+**Результат:** `dist/predict.exe` (~180-200 MB з PyTorch)
+
+**⚠️ ВАЖЛИВО:**
+- Model checkpoint НЕ вбудований в .exe (передається як аргумент)
+- Usage: `predict.exe model.pt input_curve.txt output_params.txt`
+- Copy `predict.exe` + `checkpoints/` folder разом
+
+### test_predictor.py (тестовий без ML):
 ```bash
-wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=predict --noconsole --clean --add-data="checkpoints/dataset_1000_dl100_7d_curve_val_best_curve.pt;checkpoints" predict.py
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=test_predictor_win --console --clean test_predictor.py
 ```
 
 ### Новий скрипт:
 ```bash
-wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=my_script_win --noconsole --clean my_script.py
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=my_script_win --console --clean my_script.py
 ```
-
-**Результат:** `dist/назва_файлу.exe`
-
-**Важливо:** Для predict.py потрібно додати model checkpoint через `--add-data`
 
 ---
 
@@ -75,67 +87,107 @@ wine "C:\\Program Files\\Python310\\python.exe" --version
 # Очікуваний результат: Python 3.10.11
 ```
 
-### 5. Встановити PyInstaller
+### 5. Встановити залежності (PyTorch + PyInstaller + NumPy)
 ```bash
+# PyTorch CPU version (для predict.py)
+wine "C:\\Program Files\\Python310\\python.exe" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# NumPy
+wine "C:\\Program Files\\Python310\\python.exe" -m pip install numpy
+
+# PyInstaller
 wine "C:\\Program Files\\Python310\\python.exe" -m pip install pyinstaller
 ```
 
+**⚠️ Увага:** Встановлення PyTorch займає ~5-10 хвилин через Wine
+
 ## Компіляція Windows .exe
 
-### Команда для білду:
+### Команда для predict.py (з PyTorch):
 ```bash
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
   --onefile \
-  --name=test_predictor_win \
-  --noconsole \
+  --name=predict \
+  --console \
   --clean \
-  test_predictor.py
+  --hidden-import=torch \
+  --hidden-import=torch.nn \
+  --hidden-import=torch.optim \
+  --collect-submodules=torch \
+  predict.py
 ```
 
 **Параметри:**
 - `--onefile` - один виконуваний файл (не папка)
-- `--name=test_predictor_win` - ім'я .exe файлу
-- `--noconsole` - БЕЗ чорного вікна консолі (важливо!)
+- `--name=predict` - ім'я .exe файлу
+- `--console` - З консольним вікном (для debug)
 - `--clean` - очистити кеш перед білдом
+- `--hidden-import=torch` - включити PyTorch
+- `--collect-submodules=torch` - включити всі PyTorch submodules
+
+**⚠️ Компіляція займає ~5-10 хвилин через Wine + PyTorch**
 
 ### Результат:
 ```
-dist/test_predictor_win.exe - Windows виконуваний файл (5.3 MB)
+dist/predict.exe - Windows виконуваний файл (~180-200 MB з PyTorch)
 ```
+
+### Команда для простих скриптів (БЕЗ ML):
+```bash
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
+  --onefile \
+  --name=test_predictor_win \
+  --console \
+  --clean \
+  test_predictor.py
+```
+
+**Результат:** `dist/test_predictor_win.exe` (~5-10 MB)
 
 ## Тестування на macOS
 
-### Запустити через Wine:
+### Запустити predict.exe через Wine:
 ```bash
-wine dist/test_predictor_win.exe input.txt output.txt
+# Create test curve
+python -c "import numpy as np; curve = np.random.rand(701) * 1e-3 + 1e-5; np.savetxt('test_curve.txt', curve, fmt='%.6e')"
+
+# Run predict.exe
+wine dist/predict.exe checkpoints/model.pt test_curve.txt test_output.txt
+
+# Check output
+cat test_output.txt
 ```
 
 ### Перевірити exit code:
 ```bash
-wine dist/test_predictor_win.exe input.txt output.txt
+wine dist/predict.exe checkpoints/model.pt test_curve.txt test_output.txt
 echo $?
 # 0 = успіх, 1 = помилка
 ```
 
 ### Перевірити тип файлу:
 ```bash
-file dist/test_predictor_win.exe
-# Очікуваний результат: PE32+ executable (GUI) x86-64, for MS Windows
+file dist/predict.exe
+# Очікуваний результат: PE32+ executable (console) x86-64, for MS Windows
 ```
 
 ## Швидкий rebuild
 
-Якщо змінили `test_predictor.py` і треба перекомпілювати:
+Якщо змінили `predict.py` і треба перекомпілювати:
 
 ```bash
 # Очистити попередній білд
 rm -rf build/ dist/ *.spec
 
-# Перекомпілювати
+# Перекомпілювати predict.exe (з PyTorch)
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
-  --onefile --name=test_predictor_win --noconsole --clean \
-  test_predictor.py
+  --onefile --name=predict --console --clean \
+  --hidden-import=torch --hidden-import=torch.nn --hidden-import=torch.optim \
+  --collect-submodules=torch \
+  predict.py
 ```
+
+**Час компіляції:** ~5-10 хвилин з PyTorch
 
 ## Troubleshooting
 
@@ -165,19 +217,40 @@ wineboot --init  # потім заново встановити Python
 
 ## Примітки
 
+### predict.exe (з PyTorch):
+1. **Час компіляції:** ~5-10 хвилин (Wine + PyTorch)
+2. **Розмір .exe:** ~180-200 MB (з PyTorch CPU)
+3. **Model checkpoint:** НЕ вбудований, передається як аргумент
+4. **Usage:** `predict.exe model.pt input.txt output.txt`
+5. **Працює тільки на Windows** - не запускається нативно на macOS!
+6. **Тестування на macOS** можливе лише через Wine
+7. **Фінальне тестування** робити на реальній Windows машині
+
+### Прості скрипти (БЕЗ ML):
 1. **Час компіляції:** ~30-60 секунд
-2. **Розмір .exe:** ~5-6 MB
-3. **Працює тільки на Windows** - не запускається нативно на macOS!
-4. **Тестування на macOS** можливе лише через Wine
-5. **Фінальне тестування** робити на реальній Windows машині
+2. **Розмір .exe:** ~5-10 MB
 
 ## Структура проекту
 
 ```
 master-project-light/
-├── test_predictor.py          # Python скрипт
+├── predict.py                 # ML predictor скрипт
+├── model_common.py            # Model architecture
+├── checkpoints/               # Model checkpoints (НЕ в .exe)
+│   └── model.pt
 └── dist/
-    └── test_predictor_win.exe # Windows executable
+    └── predict.exe            # Windows executable (~180-200 MB)
+```
+
+**Для розгортання на Windows:**
+```
+your-project/
+├── predict.exe               # Скопіювати з dist/
+├── checkpoints/              # Скопіювати всю папку
+│   └── model.pt
+└── data/                     # Ваші дані
+    ├── input_curve.txt
+    └── output_params.txt
 ```
 
 ## Автоматизація (опціонально)
@@ -188,21 +261,29 @@ master-project-light/
 #!/bin/bash
 set -e
 
-echo "Building Windows executable..."
+echo "Building Windows predict.exe with PyTorch..."
 
 # Clean
 rm -rf build/ dist/ *.spec
 
 # Build
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
-  --onefile --name=test_predictor_win --noconsole --clean \
-  test_predictor.py
+  --onefile --name=predict --console --clean \
+  --hidden-import=torch --hidden-import=torch.nn --hidden-import=torch.optim \
+  --collect-submodules=torch \
+  predict.py
 
 # Verify
-if [ -f "dist/test_predictor_win.exe" ]; then
+if [ -f "dist/predict.exe" ]; then
     echo "✓ Build successful!"
-    ls -lh dist/test_predictor_win.exe
-    file dist/test_predictor_win.exe
+    ls -lh dist/predict.exe
+    file dist/predict.exe
+    echo ""
+    echo "📦 Package for Windows:"
+    echo "   - Copy dist/predict.exe"
+    echo "   - Copy checkpoints/ folder"
+    echo ""
+    echo "Usage: predict.exe model.pt input.txt output.txt"
 else
     echo "✗ Build failed!"
     exit 1
@@ -214,3 +295,5 @@ fi
 chmod +x build_windows.sh
 ./build_windows.sh
 ```
+
+**⚠️ Очікуваний час:** ~5-10 хвилин

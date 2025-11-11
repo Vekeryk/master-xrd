@@ -6,7 +6,7 @@ Generate 1000-sample test dataset for fast approach comparison.
 import sys
 sys.path.insert(0, '.')
 
-from dataset_stratified_7d import generate_stratified_dataset
+from generate_dataset_stratified_7d import generate_stratified_dataset
 
 if __name__ == "__main__":
     print("Generating 1000-sample test dataset...")

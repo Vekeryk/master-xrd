@@ -64,9 +64,9 @@ def calculate_imbalance_ratio(X, n_bins_per_param=5):
         bin_counts: dict with bin statistics
     """
     # Import here to avoid circular imports
-    import dataset_stratified_7d
-    create_parameter_bins = dataset_stratified_7d.create_parameter_bins
-    get_multidim_bin_key = dataset_stratified_7d.get_multidim_bin_key
+    import generate_dataset_stratified_7d
+    create_parameter_bins = generate_dataset_stratified_7d.create_parameter_bins
+    get_multidim_bin_key = generate_dataset_stratified_7d.get_multidim_bin_key
 
     # Create bins
     param_bins = create_parameter_bins(n_bins_per_param)
@@ -121,8 +121,10 @@ def calculate_edge_percentage(X, param_idx, threshold=0.2):
     values = X[:, param_idx]
 
     # Define edge thresholds
-    threshold_low = param_range[0] + threshold * (param_range[1] - param_range[0])
-    threshold_high = param_range[1] - threshold * (param_range[1] - param_range[0])
+    threshold_low = param_range[0] + threshold * \
+        (param_range[1] - param_range[0])
+    threshold_high = param_range[1] - \
+        threshold * (param_range[1] - param_range[0])
 
     # Count edge samples
     edge_mask = (values < threshold_low) | (values > threshold_high)
@@ -148,7 +150,8 @@ def analyze_dataset(filepath, comparison_file=None):
     X, gen_params = load_dataset(filepath)
     print(f"\n📦 Dataset: {filepath}")
     print(f"   Samples: {len(X):,}")
-    print(f"   Proportional sampling: {gen_params.get('proportional_sampling', 'Unknown')}")
+    print(
+        f"   Proportional sampling: {gen_params.get('proportional_sampling', 'Unknown')}")
     print(f"   Generated: {gen_params.get('timestamp', 'Unknown')}")
 
     # 1. Chi-square test for each parameter
@@ -162,7 +165,8 @@ def analyze_dataset(filepath, comparison_file=None):
     all_pass = True
 
     for i, param in enumerate(PARAM_NAMES):
-        chi2, p_value, bin_counts = chi_square_uniformity_test(X[:, i], n_bins=10)
+        chi2, p_value, bin_counts = chi_square_uniformity_test(
+            X[:, i], n_bins=10)
         chi_square_results[param] = (chi2, p_value)
 
         status = "✅ PASS" if p_value > 0.05 else "❌ FAIL"
@@ -178,7 +182,8 @@ def analyze_dataset(filepath, comparison_file=None):
     print(f"2. 7D BIN IMBALANCE RATIO (lower is better)")
     print(f"{'='*80}")
 
-    imbalance_ratio, bin_stats = calculate_imbalance_ratio(X, n_bins_per_param=3)
+    imbalance_ratio, bin_stats = calculate_imbalance_ratio(
+        X, n_bins_per_param=3)
 
     print(f"   Imbalance ratio: {imbalance_ratio:.2f}× (max/min)")
     print(f"   Min bin count:   {bin_stats['min']:,}")
@@ -217,10 +222,12 @@ def analyze_dataset(filepath, comparison_file=None):
         X_old, gen_params_old = load_dataset(comparison_file)
         print(f"\n📦 Old dataset: {comparison_file}")
         print(f"   Samples: {len(X_old):,}")
-        print(f"   Proportional sampling: {gen_params_old.get('proportional_sampling', False)}")
+        print(
+            f"   Proportional sampling: {gen_params_old.get('proportional_sampling', False)}")
 
         # Old imbalance
-        imbalance_old, bin_stats_old = calculate_imbalance_ratio(X_old, n_bins_per_param=3)
+        imbalance_old, bin_stats_old = calculate_imbalance_ratio(
+            X_old, n_bins_per_param=3)
 
         # Old edge percentages
         edge_old_L2 = calculate_edge_percentage(X_old, 5, threshold=0.2)
@@ -229,14 +236,18 @@ def analyze_dataset(filepath, comparison_file=None):
         print(f"\n{'Metric':<30} {'Old':>12} {'New':>12} {'Change':>12}")
         print(f"{'-'*80}")
         print(f"{'Imbalance ratio':<30} {imbalance_old:>11.2f}× {imbalance_ratio:>11.2f}× {(imbalance_ratio/imbalance_old - 1)*100:>10.1f}%")
-        print(f"{'Edge % (L2)':<30} {edge_old_L2:>11.1f}% {edge_results['L2']:>11.1f}% {edge_results['L2'] - edge_old_L2:>10.1f}%")
-        print(f"{'Edge % (Rp2)':<30} {edge_old_Rp2:>11.1f}% {edge_results['Rp2']:>11.1f}% {edge_results['Rp2'] - edge_old_Rp2:>10.1f}%")
+        print(
+            f"{'Edge % (L2)':<30} {edge_old_L2:>11.1f}% {edge_results['L2']:>11.1f}% {edge_results['L2'] - edge_old_L2:>10.1f}%")
+        print(
+            f"{'Edge % (Rp2)':<30} {edge_old_Rp2:>11.1f}% {edge_results['Rp2']:>11.1f}% {edge_results['Rp2'] - edge_old_Rp2:>10.1f}%")
 
         # Chi-square comparison
-        print(f"\n{'Parameter':<10} {'Old p-value':>12} {'New p-value':>12} {'Status':>15}")
+        print(
+            f"\n{'Parameter':<10} {'Old p-value':>12} {'New p-value':>12} {'Status':>15}")
         print(f"{'-'*80}")
         for i, param in enumerate(PARAM_NAMES):
-            chi2_old, p_old = chi_square_uniformity_test(X_old[:, i], n_bins=10)[:2]
+            chi2_old, p_old = chi_square_uniformity_test(
+                X_old[:, i], n_bins=10)[:2]
             chi2_new, p_new = chi_square_results[param]
 
             status_old = "PASS" if p_old > 0.05 else "FAIL"
@@ -249,9 +260,11 @@ def analyze_dataset(filepath, comparison_file=None):
     print(f"\n{'='*80}")
     print(f"SUMMARY")
     print(f"{'='*80}")
-    print(f"\n✅ Uniformity test: {'PASS' if all_pass else 'FAIL'} ({sum(1 for _, p in chi_square_results.values() if p > 0.05)}/7 params)")
+    print(
+        f"\n✅ Uniformity test: {'PASS' if all_pass else 'FAIL'} ({sum(1 for _, p in chi_square_results.values() if p > 0.05)}/7 params)")
     print(f"✅ Imbalance ratio: {imbalance_ratio:.2f}× {'(excellent <1.5)' if imbalance_ratio < 1.5 else '(good <3.0)' if imbalance_ratio < 3.0 else '(needs work)'}")
-    print(f"✅ Edge samples: L2={edge_results['L2']:.1f}%, Rp2={edge_results['Rp2']:.1f}% {'(expected ~40%)' if abs(edge_results['L2'] - 40) < 10 else '(off from 40%)'}")
+    print(
+        f"✅ Edge samples: L2={edge_results['L2']:.1f}%, Rp2={edge_results['Rp2']:.1f}% {'(expected ~40%)' if abs(edge_results['L2'] - 40) < 10 else '(off from 40%)'}")
 
     if comparison_file:
         improvement = (imbalance_old - imbalance_ratio) / imbalance_old * 100
@@ -265,7 +278,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Test dataset uniformity")
     parser.add_argument("dataset", help="Path to dataset to analyze")
-    parser.add_argument("--compare", help="Path to old dataset for comparison", default=None)
+    parser.add_argument(
+        "--compare", help="Path to old dataset for comparison", default=None)
 
     args = parser.parse_args()
 

@@ -3,32 +3,58 @@
 ## ШВИДКА ІНСТРУКЦІЯ
 
 ### predict.py (основний predictor з PyTorch):
+
+**Варіант 1 - `--onefile` (один файл):**
+
 ```bash
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
   --onefile \
   --name=predict \
   --console \
   --clean \
-  --hidden-import=torch \
-  --hidden-import=torch.nn \
-  --hidden-import=torch.optim \
-  --collect-submodules=torch \
+  --collect-all torch \
   predict.py
 ```
+
+**Варіант 2 - `--onedir` (РЕКОМЕНДОВАНО - краще з DLL):**
+
+```bash
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
+  --onedir \
+  --name=predict \
+  --console \
+  --clean \
+  --collect-all torch \
+  predict.py
+```
+
+```bash
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
+  --noconfirm --clean --onedir \
+  --name=predict --noconsole \
+  --collect-binaries torch \
+  --collect-submodules torch \
+  predict.py
+```
+
+**⚠️ `--onedir` створює папку `dist/predict/` з .exe + DLL. Рідше проблеми з ініціалізацією!**
 
 **Результат:** `dist/predict.exe` (~180-200 MB з PyTorch)
 
 **⚠️ ВАЖЛИВО:**
+
 - Model checkpoint НЕ вбудований в .exe (передається як аргумент)
 - Usage: `predict.exe model.pt input_curve.txt output_params.txt`
 - Copy `predict.exe` + `checkpoints/` folder разом
 
 ### test_predictor.py (тестовий без ML):
+
 ```bash
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=test_predictor_win --console --clean test_predictor.py
 ```
 
 ### Новий скрипт:
+
 ```bash
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=my_script_win --console --clean my_script.py
 ```
@@ -42,6 +68,7 @@ wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" --onefile --name=m
 ## Передумови
 
 ### 1. Встановити Wine CrossOver
+
 ```bash
 # Додати tap для Wine
 brew tap gcenx/wine
@@ -51,11 +78,13 @@ brew install --cask --no-quarantine wine-crossover
 ```
 
 ### 2. Встановити Rosetta 2 (для Apple Silicon)
+
 ```bash
 softwareupdate --install-rosetta --agree-to-license
 ```
 
 ### 3. Перевірити Wine
+
 ```bash
 wine --version
 # Очікуваний результат: wine-8.0.1 (CrossOverFOSS 23.7.1)
@@ -64,30 +93,35 @@ wine --version
 ## Початкове налаштування (один раз)
 
 ### 1. Ініціалізувати Wine prefix
+
 ```bash
 wineboot --init
 # Wine створить ~/.wine з Windows середовищем
 ```
 
 ### 2. Завантажити Windows Python
+
 ```bash
 cd /tmp
 curl -L -o python-installer.exe https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe
 ```
 
 ### 3. Встановити Python в Wine
+
 ```bash
 wine /tmp/python-installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
 # Чекати ~1-2 хвилини
 ```
 
 ### 4. Перевірити встановлення Python
+
 ```bash
 wine "C:\\Program Files\\Python310\\python.exe" --version
 # Очікуваний результат: Python 3.10.11
 ```
 
 ### 5. Встановити залежності (PyTorch + PyInstaller + NumPy)
+
 ```bash
 # PyTorch CPU version (для predict.py)
 wine "C:\\Program Files\\Python310\\python.exe" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -104,35 +138,60 @@ wine "C:\\Program Files\\Python310\\python.exe" -m pip install pyinstaller
 ## Компіляція Windows .exe
 
 ### Команда для predict.py (з PyTorch):
+
+**РЕКОМЕНДОВАНО - `--onedir` (краще з DLL):**
+
+```bash
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
+  --onedir \
+  --name=predict \
+  --console \
+  --clean \
+  --collect-all torch \
+  predict.py
+```
+
+**Або `--onefile` (один файл, але можуть бути проблеми з DLL):**
+
 ```bash
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
   --onefile \
   --name=predict \
   --console \
   --clean \
-  --hidden-import=torch \
-  --hidden-import=torch.nn \
-  --hidden-import=torch.optim \
-  --collect-submodules=torch \
+  --collect-all torch \
   predict.py
 ```
 
 **Параметри:**
-- `--onefile` - один виконуваний файл (не папка)
+
+- `--onefile` / `--onedir` - формат output
 - `--name=predict` - ім'я .exe файлу
 - `--console` - З консольним вікном (для debug)
 - `--clean` - очистити кеш перед білдом
-- `--hidden-import=torch` - включити PyTorch
-- `--collect-submodules=torch` - включити всі PyTorch submodules
+- `--collect-all torch` - збирає ВСЕ з PyTorch (binaries + submodules + data)
 
 **⚠️ Компіляція займає ~5-10 хвилин через Wine + PyTorch**
 
 ### Результат:
+
+**`--onefile`:**
+
 ```
-dist/predict.exe - Windows виконуваний файл (~180-200 MB з PyTorch)
+dist/predict.exe - один файл (~180-200 MB з PyTorch)
+```
+
+**`--onedir`:**
+
+```
+dist/predict/
+├── predict.exe      - виконуваний файл
+├── torch/           - PyTorch DLL
+└── _internal/       - інші залежності
 ```
 
 ### Команда для простих скриптів (БЕЗ ML):
+
 ```bash
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
   --onefile \
@@ -147,6 +206,7 @@ wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
 ## Тестування на macOS
 
 ### Запустити predict.exe через Wine:
+
 ```bash
 # Create test curve
 python -c "import numpy as np; curve = np.random.rand(701) * 1e-3 + 1e-5; np.savetxt('test_curve.txt', curve, fmt='%.6e')"
@@ -159,6 +219,7 @@ cat test_output.txt
 ```
 
 ### Перевірити exit code:
+
 ```bash
 wine dist/predict.exe checkpoints/model.pt test_curve.txt test_output.txt
 echo $?
@@ -166,6 +227,7 @@ echo $?
 ```
 
 ### Перевірити тип файлу:
+
 ```bash
 file dist/predict.exe
 # Очікуваний результат: PE32+ executable (console) x86-64, for MS Windows
@@ -179,11 +241,16 @@ file dist/predict.exe
 # Очистити попередній білд
 rm -rf build/ dist/ *.spec
 
-# Перекомпілювати predict.exe (з PyTorch)
+# Перекомпілювати predict.exe (РЕКОМЕНДОВАНО - onedir)
+wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
+  --onedir --name=predict --console --clean \
+  --collect-all torch \
+  predict.py
+
+# АБО onefile (один файл)
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
   --onefile --name=predict --console --clean \
-  --hidden-import=torch --hidden-import=torch.nn --hidden-import=torch.optim \
-  --collect-submodules=torch \
+  --collect-all torch \
   predict.py
 ```
 
@@ -192,6 +259,7 @@ wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
 ## Troubleshooting
 
 ### Якщо Wine не запускається:
+
 ```bash
 # Перевірити Rosetta 2
 pgrep oahd || echo "Rosetta 2 не працює!"
@@ -202,6 +270,7 @@ wineboot --init  # restart
 ```
 
 ### Якщо PyInstaller не знайдено:
+
 ```bash
 # Перевстановити PyInstaller
 wine "C:\\Program Files\\Python310\\python.exe" -m pip uninstall pyinstaller -y
@@ -209,6 +278,7 @@ wine "C:\\Program Files\\Python310\\python.exe" -m pip install pyinstaller
 ```
 
 ### Очистити Wine повністю:
+
 ```bash
 # УВАГА: це видалить весь Windows Python!
 rm -rf ~/.wine
@@ -218,6 +288,7 @@ wineboot --init  # потім заново встановити Python
 ## Примітки
 
 ### predict.exe (з PyTorch):
+
 1. **Час компіляції:** ~5-10 хвилин (Wine + PyTorch)
 2. **Розмір .exe:** ~180-200 MB (з PyTorch CPU)
 3. **Model checkpoint:** НЕ вбудований, передається як аргумент
@@ -227,6 +298,7 @@ wineboot --init  # потім заново встановити Python
 7. **Фінальне тестування** робити на реальній Windows машині
 
 ### Прості скрипти (БЕЗ ML):
+
 1. **Час компіляції:** ~30-60 секунд
 2. **Розмір .exe:** ~5-10 MB
 
@@ -243,6 +315,7 @@ master-project-light/
 ```
 
 **Для розгортання на Windows:**
+
 ```
 your-project/
 ├── predict.exe               # Скопіювати з dist/
@@ -255,7 +328,7 @@ your-project/
 
 ## Автоматизація (опціонально)
 
-Можна створити bash скрипт `build_windows.sh`:
+### Скрипт `build_windows.sh`:
 
 ```bash
 #!/bin/bash
@@ -266,24 +339,27 @@ echo "Building Windows predict.exe with PyTorch..."
 # Clean
 rm -rf build/ dist/ *.spec
 
-# Build
+# Build (onedir - краще для Windows DLL)
 wine "C:\\Program Files\\Python310\\Scripts\\pyinstaller.exe" \
-  --onefile --name=predict --console --clean \
-  --hidden-import=torch --hidden-import=torch.nn --hidden-import=torch.optim \
-  --collect-submodules=torch \
+  --onedir --name=predict --console --clean \
+  --collect-all torch \
   predict.py
 
 # Verify
-if [ -f "dist/predict.exe" ]; then
+if [ -d "dist/predict" ] && [ -f "dist/predict/predict.exe" ]; then
     echo "✓ Build successful!"
-    ls -lh dist/predict.exe
-    file dist/predict.exe
+    ls -lh dist/predict/predict.exe
+    du -sh dist/predict/
     echo ""
     echo "📦 Package for Windows:"
-    echo "   - Copy dist/predict.exe"
+    echo "   - Copy entire dist/predict/ folder"
     echo "   - Copy checkpoints/ folder"
     echo ""
     echo "Usage: predict.exe model.pt input.txt output.txt"
+elif [ -f "dist/predict.exe" ]; then
+    echo "✓ Build successful (onefile)!"
+    ls -lh dist/predict.exe
+    file dist/predict.exe
 else
     echo "✗ Build failed!"
     exit 1
@@ -291,6 +367,7 @@ fi
 ```
 
 Використання:
+
 ```bash
 chmod +x build_windows.sh
 ./build_windows.sh

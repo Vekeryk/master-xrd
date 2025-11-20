@@ -30,14 +30,33 @@ reload(xrd)
 # EXPERIMENTAL PARAMETERS (CENTER OF GRID)
 # =============================================================================
 
+# EXPERIMENT_PARAMS = {
+#     'Dmax1': 0.008094,
+#     'D01': 0.000943,
+#     'L1': 5200e-8,      # 5200 Å in cm
+#     'Rp1': 3500e-8,     # 3500 Å in cm
+#     'D02': 0.00255,
+#     'L2': 3000e-8,      # 3000 Å in cm
+#     'Rp2': -50e-8,      # -50 Å in cm
+# }
+# EXPERIMENT_PARAMS = {
+#     'Dmax1': 0.01926,
+#     'D01': 0.00205,
+#     'L1': 5460e-8,      # 5460 Å in cm
+#     'Rp1': 3463e-8,     # 3463 Å in cm
+#     'D02': 0.00767,
+#     'L2': 4126e-8,      # 4126 Å in cm
+#     'Rp2': -20e-8,      # -20 Å in cm
+# }
+
 EXPERIMENT_PARAMS = {
-    'Dmax1': 0.008094,
-    'D01': 0.000943,
-    'L1': 5200e-8,      # 5200 Å in cm
-    'Rp1': 3500e-8,     # 3500 Å in cm
-    'D02': 0.00255,
-    'L2': 3000e-8,      # 3000 Å in cm
-    'Rp2': -50e-8,      # -50 Å in cm
+    'Dmax1': 0.01405,
+    'D01': 0.00149,
+    'L1': 5300e-8,      # 5460 Å in cm
+    'Rp1': 3670e-8,     # 3463 Å in cm
+    'D02': 0.00428,
+    'L2': 3626e-8,      # 4126 Å in cm
+    'Rp2': -20e-8,      # -20 Å in cm
 }
 
 
@@ -66,13 +85,15 @@ def _generate_single_sample(args):
     return ([_Dmax1, _D01, _L1, _Rp1, _D02, _L2, _Rp2], curve.Y_R_vseZ)
 
 
-def create_local_ranges(center, range_pct=10):
+def create_local_ranges(center, range_pct=10, range_pct_dict=None):
     """
     Create local ranges around center (±range_pct% of center value).
 
     Args:
         center: dict with center parameters
-        range_pct: percentage of center value to use as range (e.g., 10 = ±10%)
+        range_pct: default percentage for all parameters (e.g., 10 = ±10%)
+        range_pct_dict: dict with custom percentages per parameter (overrides range_pct)
+                       Example: {'Dmax1': 20, 'D01': 15, 'L1': 5}
 
     Returns:
         local_ranges: dict with (min, max) for each parameter
@@ -80,29 +101,35 @@ def create_local_ranges(center, range_pct=10):
     local_ranges = {}
 
     for param, value in center.items():
-        # For positive params: ±range_pct%
+        # Get percentage for this parameter (custom or default)
+        pct = range_pct_dict.get(
+            param, range_pct) if range_pct_dict else range_pct
+
+        # For positive params: ±pct%
         if value > 0:
-            delta = abs(value * range_pct / 100.0)
+            delta = abs(value * pct / 100.0)
             local_ranges[param] = (value - delta, value + delta)
-        # For negative params (like Rp2): ±range_pct% of absolute value
+        # For negative params (like Rp2): ±pct% of absolute value
         elif value < 0:
-            delta = abs(value * range_pct / 100.0)
+            delta = abs(value * pct / 100.0)
             local_ranges[param] = (value - delta, value + delta)
         # For zero: use small absolute range
         else:
-            delta = 0.0001 * range_pct / 100.0
+            delta = 0.0001 * pct / 100.0
             local_ranges[param] = (-delta, delta)
 
     return local_ranges
 
 
-def calculate_grid_steps(local_ranges, step_pct=1):
+def calculate_grid_steps(local_ranges, step_pct=1, step_pct_dict=None):
     """
     Calculate grid step sizes (step_pct% of local range width).
 
     Args:
         local_ranges: dict with (min, max) for each parameter
-        step_pct: percentage of range width to use as step
+        step_pct: default percentage of range width to use as step
+        step_pct_dict: dict with custom step percentages per parameter
+                      Example: {'Dmax1': 0.5, 'D01': 2, 'L1': 1}
 
     Returns:
         steps: dict with step size for each parameter
@@ -110,8 +137,11 @@ def calculate_grid_steps(local_ranges, step_pct=1):
     steps = {}
 
     for param, (min_val, max_val) in local_ranges.items():
+        # Get step percentage for this parameter (custom or default)
+        pct = step_pct_dict.get(param, step_pct) if step_pct_dict else step_pct
+
         range_width = max_val - min_val
-        steps[param] = range_width * step_pct / 100.0
+        steps[param] = range_width * pct / 100.0
 
     return steps
 
@@ -250,7 +280,9 @@ def generate_dense_grid(center, local_ranges, steps, n_samples_target=10000, max
 
 
 def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
-                              range_pct=10, step_pct=1, output_dir="datasets"):
+                              range_pct=10, step_pct=1,
+                              range_pct_dict=None, step_pct_dict=None,
+                              output_dir="datasets"):
     """
     Generate dense grid dataset around experimental parameters.
 
@@ -258,8 +290,10 @@ def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
         experiment_params: dict with experimental parameters
         n_samples: Number of samples to generate
         dl: Layer thickness in cm
-        range_pct: Range around center as % of center value (e.g., 10 = ±10%)
-        step_pct: Grid step as % of local range width (e.g., 1 = 1% steps)
+        range_pct: Default range around center as % of center value (e.g., 10 = ±10%)
+        step_pct: Default grid step as % of local range width (e.g., 1 = 1% steps)
+        range_pct_dict: Custom percentages per parameter (overrides range_pct)
+        step_pct_dict: Custom step percentages per parameter (overrides step_pct)
         output_dir: Output directory
 
     Returns:
@@ -270,14 +304,30 @@ def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
     print(f"{'='*80}")
     print(f"Target samples: {n_samples:,}")
     print(f"dl: {dl*1e8:.0f} Å")
-    print(f"Local range: ±{range_pct}% of center value")
-    print(f"Grid step: {step_pct}% of local range width")
+
+    if range_pct_dict:
+        print(f"Local ranges (custom per parameter):")
+        for param, pct in range_pct_dict.items():
+            print(f"  {param}: ±{pct}%")
+    else:
+        print(f"Local range: ±{range_pct}% of center value (all parameters)")
+
+    if step_pct_dict:
+        print(f"Grid steps (custom per parameter):")
+        for param, pct in step_pct_dict.items():
+            print(f"  {param}: {pct}% of range")
+    else:
+        print(f"Grid step: {step_pct}% of local range width (all parameters)")
 
     # Create local ranges around experiment (ignores global RANGES!)
-    local_ranges = create_local_ranges(experiment_params, range_pct=range_pct)
+    local_ranges = create_local_ranges(experiment_params,
+                                       range_pct=range_pct,
+                                       range_pct_dict=range_pct_dict)
 
     # Calculate grid steps
-    steps = calculate_grid_steps(local_ranges, step_pct=step_pct)
+    steps = calculate_grid_steps(local_ranges,
+                                 step_pct=step_pct,
+                                 step_pct_dict=step_pct_dict)
 
     # Generate dense grid samples
     param_samples = generate_dense_grid(
@@ -341,6 +391,8 @@ def generate_targeted_dataset(experiment_params, n_samples=10000, dl=100e-8,
             'dl': dl,
             'range_pct': range_pct,
             'step_pct': step_pct,
+            'range_pct_dict': range_pct_dict,
+            'step_pct_dict': step_pct_dict,
             'method': 'Dense grid around experimental parameters',
             'first_sample': 'EXPERIMENTAL PARAMETERS (always X[0])',
             'experiment_params': experiment_params,
@@ -409,18 +461,45 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="Generate dense grid dataset around experimental parameters")
-    parser.add_argument("--n-samples", type=int, default=10000,
+    parser.add_argument("--n-samples", type=int, default=50000,
                         help="Number of samples to generate (default: 10000)")
     parser.add_argument("--dl", type=float, default=100e-8,
                         help="Layer thickness in cm (default: 100e-8)")
-    parser.add_argument("--range-pct", type=float, default=20,
+    parser.add_argument("--range-pct", type=float, default=50,
                         help="Range around center as %% of center value (default: 10 = ±10%%)")
-    parser.add_argument("--step-pct", type=float, default=1,
+    parser.add_argument("--step-pct", type=float, default=5,
                         help="Grid step as %% of local range width (default: 1 = 1%% steps)")
     parser.add_argument("--output-dir", type=str, default="datasets",
                         help="Output directory (default: datasets)")
 
     args = parser.parse_args()
+
+    # =============================================================================
+    # CUSTOM PERCENTAGES PER PARAMETER (Optional)
+    # =============================================================================
+    # Якщо потрібно вказати різні відсотки для різних параметрів, розкоментуйте:
+
+    # Приклад: custom ranges для кожного параметра
+    range_pct_dict = {
+        'Dmax1': 50,  # ±50% від центру
+        'D01': 50,    # ±30% від центру
+        'L1': 5,     # ±10% від центру
+        'Rp1': 1,    # ±20% від центру
+        'D02': 60,    # ±40% від центру
+        'L2': 20,     # ±15% від центру
+        'Rp2': 90,   # ±100% від центру
+    }
+
+    # Приклад: custom grid steps для кожного параметра
+    step_pct_dict = {
+        'Dmax1': 5,   # 2% від range width
+        'D01': 5,     # 1% від range width
+        'L1': 10,      # 5% від range width
+        'Rp1': 80,     # 5% від range width
+        'D02': 5,     # 2% від range width
+        'L2': 10,      # 5% від range width
+        'Rp2': 80,    # 10% від range width
+    }
 
     # Generate dataset
     dataset = generate_targeted_dataset(
@@ -429,6 +508,8 @@ if __name__ == "__main__":
         dl=args.dl,
         range_pct=args.range_pct,
         step_pct=args.step_pct,
+        range_pct_dict=range_pct_dict,  # Розкоментуйте для custom ranges
+        step_pct_dict=step_pct_dict,    # Розкоментуйте для custom steps
         output_dir=args.output_dir
     )
 

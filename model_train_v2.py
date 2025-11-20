@@ -290,7 +290,7 @@ if __name__ == "__main__":
     # =============================================================================
 
     # Dataset
-    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"
+    DATA_PATH = "datasets/dataset_50000_dl100_targeted.pkl"
     DATASET_NAME = Path(DATA_PATH).stem
 
     # Training hyperparameters

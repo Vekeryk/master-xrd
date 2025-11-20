@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from model_common import PARAM_NAMES
 
 # Load dataset
-DATASET_PATH = "datasets/dataset_10000_dl100_7d_20251030_124511.pkl"
+DATASET_PATH = "datasets/dataset_100000_dl100_7d.pkl"
 
 with open(DATASET_PATH, "rb") as f:
     data = pickle.load(f)
@@ -54,7 +54,7 @@ for i in range(len(PARAM_NAMES), len(axes)):
     fig.delaxes(axes[i])
 
 plt.tight_layout()
-plt.savefig('analysis_report/7d_distributions_bar.png',
+plt.savefig('7d_distributions_bar.png',
             dpi=150, bbox_inches='tight')
 plt.show()
 

@@ -1,24 +1,27 @@
 # Діаграма процесу навчання моделі
 
 ```mermaid
-flowchart TD
-    A[Генерація синтетичного датасету] --> B[Розділення на train/val/test]
-    B --> C[Створення DataLoader]
-    C --> D[Ініціалізація моделі XRDRegressor]
-    D --> E[Налаштування оптимізатора та функції втрат]
-    E --> F{Епоха навчання}
-    F --> G[Forward pass: передбачення параметрів]
-    G --> H[Обчислення функції втрат]
-    H --> I[Backward pass: градієнти]
-    I --> J[Оновлення ваг оптимізатором]
-    J --> K[Валідація на val set]
-    K --> L{Епохи завершені?}
-    L -->|Ні| F
-    L -->|Так| M[Тестування на test set]
-    M --> N[Збереження навченої моделі]
+sequenceDiagram
+    participant D as Датасет
+    participant M as Модель
+    participant O as Оптимізатор
+    participant L as Функція втрат
 
-    style A fill:#e1f5ff
-    style N fill:#c8e6c9
-    style F fill:#fff9c4
-    style L fill:#fff9c4
+    D->>D: Генерація синтетичних КДВ
+    D->>D: Розділення train/val/test
+    D->>M: Завантаження даних (DataLoader)
+    M->>M: Ініціалізація XRDRegressor
+    O->>O: Налаштування Adam
+
+    loop Кожна епоха
+        M->>M: Forward pass
+        M->>L: Передбачені параметри
+        L->>L: Обчислення втрат
+        L->>M: Градієнти (Backward)
+        O->>M: Оновлення ваг
+        M->>M: Валідація
+    end
+
+    M->>M: Тестування
+    M->>M: Збереження моделі
 ```

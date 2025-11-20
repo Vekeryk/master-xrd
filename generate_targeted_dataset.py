@@ -461,11 +461,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="Generate dense grid dataset around experimental parameters")
-    parser.add_argument("--n-samples", type=int, default=50000,
+    parser.add_argument("--n-samples", type=int, default=1000,
                         help="Number of samples to generate (default: 10000)")
     parser.add_argument("--dl", type=float, default=100e-8,
                         help="Layer thickness in cm (default: 100e-8)")
-    parser.add_argument("--range-pct", type=float, default=50,
+    parser.add_argument("--range-pct", type=float, default=10,
                         help="Range around center as %% of center value (default: 10 = ±10%%)")
     parser.add_argument("--step-pct", type=float, default=5,
                         help="Grid step as %% of local range width (default: 1 = 1%% steps)")

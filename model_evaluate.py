@@ -195,9 +195,9 @@ if __name__ == "__main__":
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_full.pt"
     # MODEL_PATH = f"checkpoints/dataset_1000_dl100_7d_v3_unweighted_full.pt"
 
-    DATA_PATH = "datasets/dataset_10000_dl100_targeted.pkl"  # For quick testing
+    DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl"  # For quick testing
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_full.pt"
-    MODEL_PATH = f"checkpoints/10000_target_log_best_params.pt"
+    MODEL_PATH = f"checkpoints/100000_log_best_params.pt"
     # MODEL_PATH = f"checkpoints/dataset_10000_dl100_7d_v3_unweighted_full.pt"
 
     # DATA_PATH = "datasets/dataset_100000_dl100_7d.pkl" # For mid

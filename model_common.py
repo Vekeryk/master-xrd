@@ -116,7 +116,7 @@ def preprocess_curve(curve, crop_by_peak=True, peak_offset=30, target_length=Non
     if last_high_idx is not None:
         curve_np[last_high_idx:] = NOISE_THRESHOLD
 
-        w, i = 10, last_high_idx                         # ширина і центр сходинки
+        w, i = 20, last_high_idx                         # ширина і центр сходинки
         L, R = max(0, i - w), min(len(curve_np) - 1, i + 50)
         eps = 1e-12
         t = np.linspace(0, 1, R - L + 1)
